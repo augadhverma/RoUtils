@@ -93,7 +93,7 @@ class CustomHelp(commands.HelpCommand):
 
         embed.add_field(
             name="Usage",
-            value=f"`{self.context.prefix}{cmd.qualified_name} {cmd.signature}`" if cmd.signature else f"{self.context.prefix}{cmd.qualified_name}",
+            value=f"`{self.context.prefix}{cmd.qualified_name} {cmd.signature}`" if cmd.signature else f"`{self.context.prefix}{cmd.qualified_name}`",
             inline=False
         )
 

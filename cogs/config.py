@@ -57,7 +57,7 @@ class Config(commands.Cog):
         except Exception as e:
             return await ctx.reply(f"```py\n{e}```")
 
-        return await ctx.reply(f"```📤 Unloaded extension: **`cogs/{name}.py`**.")
+        return await ctx.reply(f"📤 Unloaded extension: **`cogs/{name}.py`**.")
 
     @commands.command(name="reload")
     @commands.is_owner()
