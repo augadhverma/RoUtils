@@ -55,7 +55,9 @@ class Config(commands.Cog):
         try:
             self.bot.unload_extension(f"cogs.{name}")
         except Exception as e:
-            return await ctx.reply(f"```📤 Unloaded extension: **`cogs/{name}.py`**.")
+            return await ctx.reply(f"```py\n{e}```")
+
+        return await ctx.reply(f"```📤 Unloaded extension: **`cogs/{name}.py`**.")
 
     @commands.command(name="reload")
     @commands.is_owner()
