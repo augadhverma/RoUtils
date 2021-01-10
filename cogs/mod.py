@@ -17,6 +17,7 @@ For more information on the License, check the LICENSE attached with this Softwa
 If the License is not attached, see https://www.gnu.org/licenses/
 """
 
+import asyncio
 import discord
 from typing import Union
 
@@ -72,7 +73,8 @@ class Moderation(commands.Cog):
         l = []
         cursor = self.db.fetch_many({"offender":{"$eq":offender}})
         async for document in cursor:
-            l.append(document)
+            if not document["type"] in ("unmute","unban"):
+                l.append(document)
         Kick = namedtuple('Kick',['boolean','infractions'])
         if len(l)%5==0:
             print(Kick(True, len(l)))
@@ -86,6 +88,13 @@ class Moderation(commands.Cog):
     @commands.guild_only()
     @is_staff()
     async def warn(self, ctx:commands.Context, offender: discord.Member,*, reason:str=None):
+        """Warn a member
+
+        Args:
+            offender : The user to warn
+            reason (optional): The reason for the warn.
+
+        """
         if offender == ctx.author:
             return await ctx.send("You can't warn yourself <a:facepalm:797528543490867220>", delete_after=5.0)
         elif offender.top_role > ctx.author.top_role:
@@ -168,6 +177,9 @@ class Moderation(commands.Cog):
 
     @commands.command(name="mywarns", aliases=["myinf"])
     async def my_warns(self, ctx:commands.Context):
+        """Shows your warns
+
+        """
         warns = []
         cursor = self.db.fetch_many({"offender":{"$eq":ctx.author.id}})
         async for document in cursor:
@@ -279,9 +291,186 @@ class Moderation(commands.Cog):
                     await offender.kick(reason=f"Violated {_kick.infractions} infractions")
 
 
+    @mute.error
+    async def mute_error(self, ctx:commands.Context, error):
+        """Local error handler for mute command"""
+        if isinstance(error, commands.CheckFailure):
+            return await ctx.message.delete()
+        elif isinstance(error, commands.MissingRequiredArgument):
+            if error.param.name == "offender":
+                return await ctx.send("You need to provide an `offender`", delete_after=5.0)
+
+    
     @commands.command()
-    async def test(self, ctx:commands.Context, member1:discord.Member, member2:discord.Member):
-        await ctx.send(member1.top_role > member2.top_role)
+    @commands.guild_only()
+    @is_staff()
+    async def unmute(self, ctx:commands.Context, offender:discord.Member, reason:str=None):
+        """Unmutes an already muted user
+
+        Args:
+            offender : The user to unmute
+            reason (optional): The reason for the unmute
+        """
+        mute_role = self.get_mute_role(ctx)
+        if offender.bot:
+            return await ctx.send("You can't perform this action on a bot..", delete_after=5.0)
+        elif offender.top_role > ctx.author.top_role:
+            return await ctx.send("You can't perform this action on someone who is higher than you..", delete_after=5.0)
+        elif not mute_role in offender.roles:
+            return await ctx.send(f"{offender} is not muted", delete_after=5.0)
+        elif mute_role in offender.roles:
+            await ctx.message.delete()
+            if reason is None:
+                reason = "No reason provided..."
+
+            inf_id = self.get_inf_id()
+
+            post = {
+                "infractionId":inf_id,
+                "type":"unmute",
+                "moderator":ctx.author.id,
+                "offender":offender.id,
+                "reason":reason
+            }
+
+            insert = await self.db.insert(post)
+
+            if insert.acknowledged:
+                embed = discord.Embed(colour=discord.Colour.blurple())
+                embed.description = f"{offender.mention} has been **`unmuted`** | *{reason}*"
+                embed.set_footer(text=f"ID: {inf_id}")
+                await ctx.send(embed=embed)
+
+                await offender.remove_roles(mute_role, reason=reason)
+
+                LogEmbed = discord.Embed(colour=discord.Colour.blurple(), title="Unmute", description=f"ID: {inf_id}", timestamp=datetime.utcnow())
+                LogEmbed.add_field(name="Offender", value=f"<@{offender.id}> `({offender.id})`")
+                LogEmbed.add_field(name="Moderator", value=f"<@{ctx.author.id}> `({ctx.author.id})`", inline=False)
+                LogEmbed.add_field(name="Reason", value=reason, inline=False)
+                LogEmbed.set_footer(text=self.bot.footer)
+                LogEmbed.set_thumbnail(url=offender.avatar_url)
+                await self.embed_log(ctx, LogEmbed)
+
+                offenderEmbed = discord.Embed(
+                    title=f"You have been unmuted in {ctx.guild.name}",
+                    colour=discord.Colour.blurple(),
+                    timestamp=datetime.utcnow(),
+                    description=f"You have been **`unmuted`** with reason: {reason}"
+                )
+                offenderEmbed.set_footer(text=f"ID: {inf_id}")
+
+                try:
+                    await offender.send(embed=offenderEmbed)
+                except:
+                    await ctx.send("I tried DMing the user but their DMs are of.", delete_after=5.0)
+
+    @unmute.error
+    async def unmute_error(self, ctx:commands.Context, error):
+        """Local error handler for unmute command"""
+        if isinstance(error, commands.CheckFailure):
+            return await ctx.message.delete()
+        elif isinstance(error, commands.MissingRequiredArgument):
+            if error.param.name == "offender":
+                return await ctx.send("You need to provide an `offender`", delete_after=5.0)            
+
+    @commands.command(aliases=['removewarn', 'rw'])
+    @commands.guild_only()
+    @is_staff()
+    async def unwarn(self, ctx:commands.Context, infractionId:str, reason:str=None):
+        """Removes the warn of a user based on the id
+
+        Args:
+            infractionId: The infraction id
+            reason (optional): The reason for removing the warn
+        """
+        if not len(infractionId) == 10:
+            return await ctx.send(f"Infraction id: `{infractionId}` is incorrect.", delete_after=5.0)
+        fetch = await self.db.fetch({"infractionId":{"$eq":infractionId}})
+        if fetch is None:
+            return await ctx.send(f"No infraction was found for id: `{infractionId}`", delete_after=5.0)
+        else:
+            embed = discord.Embed(colour=self.bot.colour)
+            embed.add_field(name="Infraction Type", value=fetch["type"].capitalize(), inline=False)
+            embed.add_field(name="Offender", value=f"<@{fetch['offender']}> `({fetch['offender']})`", inline=False)
+            embed.add_field(name="Moderator", value=f"<@{fetch['moderator']}> `({fetch['moderator']})`", inline=False)
+            embed.add_field(name="Reason", value=fetch['reason'])
+            embed.set_footer(text=self.bot.footer+f" | ID: {infractionId}")
+
+            await ctx.reply(content=f"Data for the infraction id: `{infractionId}`", embed=embed, mention_author=True)
+
+            await ctx.send(f"Are you sure you want to delete the warn with id : `{infractionId}`? **(Y/N)**")
+            
+            def check(message:discord.Message):
+                return ctx.author == message.author and ctx.channel == message.channel
+
+            try:
+                msg = await self.bot.wait_for("message", check=check, timeout=30.0)
+                if msg.content.lower() in ("yes", "y"):
+                    a = await self.db.delete({"infractionId":{"$eq":infractionId}})
+                    if a.acknowledged:
+                        LogEmbed = discord.Embed(colour=discord.Colour.greyple())
+                        LogEmbed.title = "Removed Warn"
+                        LogEmbed.description = f"ID: `{infractionId}`"
+                        LogEmbed.add_field(name="Removed by", value=f"{ctx.author.mention} `({ctx.author.id})`")
+                        LogEmbed.add_field(name="Reason for removal", value=reason)
+                        LogEmbed.add_field(
+                            name="About the infraction",
+                            inline=False,
+                            value=f"Offender: <@{fetch['offender']}> `({fetch['offender']})`\n"\
+                                  f"Moderator: <@{fetch['moderator']}> `({fetch['moderator']})`\n"\
+                                  f"Reason: {fetch['reason']}"
+                        )
+                        await self.embed_log(ctx, LogEmbed)
+                        return await ctx.send(f"Removed warn : {infractionId}")
+                elif msg.content.lower() in ("no", "n"):
+                    return await ctx.send("Phew, dodged a bullet there 😮")
+                else:
+                    return await ctx.send("Cancelling command...")
+            except asyncio.TimeoutError:
+                return await ctx.send("Timeout reached. Cancelling command")
+
+
+    @commands.command()
+    @commands.guild_only()
+    @is_staff()
+    async def warns(self, ctx:commands.Context, member:discord.Member):
+        """Shows warns of a user
+
+        Args:
+            member : The user
+        """
+        warns = []
+        cursor = self.db.fetch_many({"offender":{"$eq":member.id}})
+        async for document in cursor:
+            warns.append(document)
+        
+        if len(warns) == 0:
+            return await ctx.send("They are squeaky clean <a:ThumbsUp:797516959902072894>")
+        
+        if not len(warns) == 0:
+            embed = discord.Embed(colour=self.bot.colour, timestamp=datetime.utcnow(), title=f"Infractions for {member}")
+            embed.description = f"Total Infractions: {len(warns)}"
+            embed.set_footer(text=self.bot.footer)
+            embed.set_thumbnail(url=member.avatar_url)
+            embed.set_author(name=str(member), icon_url=member.avatar_url)
+            for w in warns:
+                embed.add_field(
+                    name=(w['type']).capitalize(),
+                    value=f"ID: `{w['infractionId']}`\n"\
+                          f"Reason: {w['reason']}\n"\
+                          f"Moderator: <@{w['moderator']}> `({w['moderator']})`",
+                    inline=False
+                )
+
+            await ctx.send(embed=embed)
+
+
+    @commands.command()
+    @commands.guild_only()
+    @is_senior_staff()
+    async def kick(self, ctx:commands.Context, offender:discord.Member, reason:str=None):
+        pass
+
 
 
 

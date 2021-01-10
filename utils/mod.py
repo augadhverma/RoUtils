@@ -99,7 +99,7 @@ class Mod:
             post (dict): The data to be deleted
 
         Returns:
-            DeleteResult: An instance of pymongo.results.DeleteResults
+            DeleteResult: An instance of pymongo.results.DeleteResult
                             • acknowledged: `bool` 
                             • deleted_count: The number of documents deleted.
                             • raw_result: The raw result document returned by the server.

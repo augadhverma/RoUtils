@@ -51,6 +51,8 @@ class ErrorHandler(commands.Cog):
             embed.set_footer(text=self.bot.footer)
 
             await ctx.send(embed=embed)
+        elif isinstance(error, commands.CheckFailure):
+            await ctx.message.delete()
         elif isinstance(error, handler):
             await ctx.send(content="Invalid command usage...")
             return await ctx.send_help(ctx.command)
