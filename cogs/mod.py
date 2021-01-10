@@ -448,7 +448,7 @@ class Moderation(commands.Cog):
             return await ctx.send("They are squeaky clean <a:ThumbsUp:797516959902072894>")
         
         if not len(warns) == 0:
-            embed = discord.Embed(colour=self.bot.colour, timestamp=datetime.utcnow(), title=f"Infractions for {member}")
+            embed = discord.Embed(colour=self.bot.colour, timestamp=datetime.utcnow())
             embed.description = f"Total Infractions: {len(warns)}"
             embed.set_footer(text=self.bot.footer)
             embed.set_thumbnail(url=member.avatar_url)
@@ -469,8 +469,59 @@ class Moderation(commands.Cog):
     @commands.guild_only()
     @is_senior_staff()
     async def kick(self, ctx:commands.Context, offender:discord.Member, reason:str=None):
-        pass
+        """Kicks a user from the server
 
+        Args:
+            offender : The user to kick
+            reason (optional): The reason for the kick.
+        """
+        if offender.top_role>ctx.author.top_role:
+            return await ctx.send("You can't kick someone who is higher than you", delete_after=5.0)
+
+        await ctx.message.delete()
+        if reason is None:
+            reason = "No reason provided..."
+
+        inf_id = self.get_inf_id()
+
+        post = {
+            "infractionId":inf_id,
+            "type":"kick",
+            "moderator":ctx.author.id,
+            "offender":offender.id,
+            "reason":reason
+        }
+
+        insert = await self.db.insert(post)
+        if insert.acknowledged:
+            embed = discord.Embed(colour=discord.Colour.dark_red())
+            embed.description = f"{offender.mention} has been **`kicked`** from the server | *{reason}*"
+            embed.set_footer(text=f"ID: {inf_id}")
+            await ctx.send(embed=embed)
+
+
+            LogEmbed = discord.Embed(colour=discord.Colour.dark_red(), title="Kick", description=f"ID: {inf_id}", timestamp=datetime.utcnow())
+            LogEmbed.add_field(name="Offender", value=f"<@{offender.id}> `({offender.id})`")
+            LogEmbed.add_field(name="Moderator", value=f"<@{ctx.author.id}> `({ctx.author.id})`", inline=False)
+            LogEmbed.add_field(name="Reason", value=reason, inline=False)
+            LogEmbed.set_footer(text=self.bot.footer)
+            LogEmbed.set_thumbnail(url=offender.avatar_url)
+            await self.embed_log(ctx, LogEmbed)
+
+            offenderEmbed = discord.Embed(
+                title=f"You have been kicked in {ctx.guild.name}",
+                colour=discord.Colour.red(),
+                timestamp=datetime.utcnow(),
+                description=f"You have been **`kicked`** with reason: {reason}"
+            )
+            offenderEmbed.set_footer(text=f"ID: {inf_id}")
+
+            try:
+                await offender.send(embed=offenderEmbed)
+            except:
+                await ctx.send("I tried DMing the user but their DMs are of.", delete_after=5.0)
+
+            await offender.kick(reason=reason)
 
 
 
