@@ -37,7 +37,8 @@ class CustomHelp(commands.HelpCommand):
             title="Help",
             colour=self.colour,
             timestamp=datetime.utcnow(),
-            description=f"Type `{self.context.prefix}help [command/module]` for info on a command or a module"
+            description=f"```yaml\nType {self.context.prefix}help [command/module] for info on a command or a module\n"\
+                        f"<> - Required | [] - Optional```"
         )
         for cog, cmds in mapping.items():
             if cog and len(cmds)!=0:

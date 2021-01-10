@@ -75,13 +75,13 @@ class Mod:
         """
         return await self.collection.insert_one(post)
 
-    async def update(self, old:dict, new:dict) -> UpdateResult:
+    async def update(self, filter:dict, update:dict) -> UpdateResult:
         """Updates the document in the collection
 
         Args:
-            old (dict): The old data
-            new (dict): The new data
-
+            filter (dict): A query that matches the document to update.
+            update (dict): The modifications to apply.
+            
         Returns:
             UpdateResult: An instance of pymongo.results.UpdateResult
                             • acknowledged: `bool`
@@ -90,7 +90,7 @@ class Mod:
                             • raw_result: The raw result document returned by the server.
                             • upserted_id: The _id of the inserted document if an upsert took place. Otherwise `None`. 
         """
-        return await self.collection.update_one(old, {"$set":new})
+        return await self.collection.update_one(filter , {"$set":update})
 
     async def delete(self, post:dict) -> DeleteResult:
         """Deletes the document from the collection

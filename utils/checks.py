@@ -79,3 +79,11 @@ def is_senior_staff():
         else:
             return False
     return commands.check(pred)
+
+def bot_channel():
+    async def pred(ctx:commands.Context):
+        if is_staff():
+            return True
+        else:
+            return ctx.channel.id == 678198477108543518
+    return commands.check(pred)

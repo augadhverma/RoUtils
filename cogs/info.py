@@ -22,6 +22,8 @@ from discord.ext import commands
 from datetime import date, datetime
 
 from utils.requests import get
+from utils.checks import bot_channel
+
 import typing
 
 class Information(commands.Cog):
@@ -30,6 +32,7 @@ class Information(commands.Cog):
 
     @commands.command(aliases=['ui','i'])
     @commands.cooldown(1,3.0,commands.BucketType.member)
+    @bot_channel()
     async def userinfo(self, ctx:commands.Context, member:typing.Union[discord.Member, discord.User]=None):
         if member is None:
             member = ctx.author
@@ -67,6 +70,23 @@ class Information(commands.Cog):
             embed.set_thumbnail(url=member.avatar_url)
 
         await ctx.send(embed=embed)
+
+    @commands.command()
+    @bot_channel()
+    async def get_id(self, ctx:commands.Context) -> int:
+        """Get your discord id
+
+        """
+        await ctx.send(f"You discord id is: `{ctx.author.id}`")
+
+    @commands.command(aliases=['app','apps','applications', 'application'])
+    @bot_channel()
+    async def apply(self, ctx:commands.Context):
+        """Gives the support staff application
+
+        """
+        await ctx.send("Support Staff application: https://forms.gle/qvEMjT8RweVmJQW99")
+
     
 
 def setup(bot:commands.Bot):

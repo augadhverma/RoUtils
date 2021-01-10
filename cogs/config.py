@@ -24,7 +24,7 @@ import random
 from discord.ext import commands, tasks
 from datetime import datetime
 
-class Config(commands.Cog):
+class Config(commands.Cog, command_attrs=dict(hidden=True)):
     def __init__(self, bot:commands.Bot):
         self.bot = bot
         self.change_presence.start()
