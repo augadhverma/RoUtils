@@ -18,11 +18,13 @@ If the License is not attached, see https://www.gnu.org/licenses/
 """
 
 import asyncio
+from typing import Optional
 import discord
 from discord import colour
+from discord.errors import LoginFailure
 
 from discord.ext import commands, tasks
-from datetime import datetime
+from datetime import date, datetime
 
 from utils.checks import is_admin, is_senior_staff, is_staff
 from utils.mod import Mod
@@ -78,10 +80,8 @@ class Moderation(commands.Cog):
                 l.append(document)
         Kick = namedtuple('Kick',['boolean','infractions'])
         if len(l)%5==0:
-            print(Kick(True, len(l)))
             return Kick(True, len(l))
         else:
-            print(Kick(False, len(l)))
             return Kick(False, len(l))
         
 
@@ -220,15 +220,18 @@ class Moderation(commands.Cog):
         elif mute_role in offender.roles:
             return await ctx.send(f"{offender} is already muted..")
         elif not offender.bot:
+            pass
+        else:
             await ctx.message.delete()
             if reason is None:
                 reason = "No reason provided..."
+            
 
             inf_id = self.get_inf_id()
 
             post = {
                 "infractionId":inf_id,
-                "type":"kick",
+                "type":"mute",
                 "moderator":ctx.author.id,
                 "offender":offender.id,
                 "reason":reason
@@ -265,6 +268,7 @@ class Moderation(commands.Cog):
                 except:
                     await ctx.send("I tried DMing the user but their DMs are of.", delete_after=5.0)
 
+
                 _kick = await self.to_be_kicked(offender.id)
                 if (_kick.boolean):
                     new_inf_id = self.get_inf_id()
@@ -290,7 +294,6 @@ class Moderation(commands.Cog):
                     LogEmbed.set_thumbnail(url=offender.avatar_url)
                     await self.embed_log(ctx=ctx, embed=LogEmbed)
                     await offender.kick(reason=f"Violated {_kick.infractions} infractions")
-
 
     @mute.error
     async def mute_error(self, ctx:commands.Context, error):
@@ -597,7 +600,7 @@ class Moderation(commands.Cog):
             await self.embed_log(ctx, LogEmbed)
 
             offenderEmbed = discord.Embed(
-                title=f"You have been kicked in {ctx.guild.name}",
+                title=f"You have been banned in {ctx.guild.name}",
                 colour=discord.Colour.red(),
                 timestamp=datetime.utcnow(),
                 description=f"You have been **`banned`** with reason: {reason}"
@@ -649,7 +652,7 @@ class Moderation(commands.Cog):
             await ctx.send(embed=embed)
 
 
-            LogEmbed = discord.Embed(colour=discord.Colour.magenta(), title="Ban", description=f"ID: {inf_id}", timestamp=datetime.utcnow())
+            LogEmbed = discord.Embed(colour=discord.Colour.magenta(), title="Unban", description=f"ID: {inf_id}", timestamp=datetime.utcnow())
             LogEmbed.add_field(name="Offender", value=f"{user.mention} `({user.id})`")
             LogEmbed.add_field(name="Moderator", value=f"<@{ctx.author.id}> `({ctx.author.id})`", inline=False)
             LogEmbed.add_field(name="Reason", value=reason, inline=False)
@@ -757,6 +760,76 @@ class Moderation(commands.Cog):
             return await ctx.send(f"Could not find an infraction with id: {infractionId}")
 
 
+    @commands.command(aliases=['clean'])
+    @is_staff()
+    async def purge(self, ctx:commands.Context, limit:int, bulk:Optional[bool]=True):
+        """Used to delete messages
+
+        Args:
+            limit (int): The amount of messages to delete
+            bulk (optional): Whether to bulk delete or not. Defaults to True.
+        """
+        def check(msg:discord.Message):
+            return not msg.pinned
+
+        deleted = await ctx.channel.purge(limit=limit+1, check=check, bulk=bulk)
+        
+        await ctx.send(f"Deleted {len(deleted)} messages.", delete_after=5.0)
+
+        LogEmbed = discord.Embed(title="Purge", colour=discord.Colour.dark_blue(), timestamp=datetime.utcnow())
+        LogEmbed.description = f"Purged **{len(deleted)}** messages in {ctx.channel.mention}"
+        LogEmbed.set_author(name=str(ctx.author), icon_url=ctx.author.avatar_url)
+        LogEmbed.set_footer(text=self.bot.footer)
+        await self.embed_log(ctx, LogEmbed)
+
+    @commands.command(aliases=['tmute', 'tm'], usage="<offender> <hours> [reason]")
+    @is_staff()
+    async def tempmute(self, ctx:commands.Context, offender:discord.Member, hours:Optional[int]=None, *, reason:str=None):
+        """Temporary mutes the offender
+
+        Args:
+            offender : The user to temporary mute
+            hours (int): The number of hours to mute. MUST BE A NUMBER LIKE `1`, `3` or `4`
+            reason (optional): The reason for the mute.
+        """
+        if reason is None:
+            reason = "No reason provided..."
+        if hours is None:
+            hours = 3
+        inf_id = self.get_inf_id()
+        a = datetime.utcnow()
+        b = datetime(a.year, a.month, a.day, a.hours+hours, a.minute, a.second, a.microsecond)
+        post = {
+            "infractionId":inf_id,
+            "type":"forceban",
+            "moderator":ctx.author.id,
+            "offender":offender.id,
+            "reason":reason + f" | Until {datetime.strftime(b, '%a %d, %B of %Y at %H:%M%p')} ({hours} hours)",
+            "mute_time": b
+        }
+
+        insert = await self.db.insert(post)
+
+        if insert.acknowledged:
+            embed = discord.Embed(colour=discord.Color.red())
+            embed.description = f"{offender.mention} has ben muted for {hours}h | *{reason}*"
+            embed.set_footer(text=f"ID: {inf_id}")
+
+            LogEmbed = discord.Embed(colour=discord.Color.red(), title="Temporarily Muted", timestamp=datetime.utcnow())
+            LogEmbed.description = f"ID: {inf_id}"
+            LogEmbed.add_field(name="Offender", value=f"{offender.mention} `({offender.id})`", inline=False)
+            LogEmbed.add_field(name="Moderator", value=f"{ctx.author.mention} `({ctx.author.id})`", inline=False)
+            LogEmbed.add_field(name="Duration", value=f"Until {datetime.strftime(b, '%a %d, %B of %Y at %H:%M%p')} ({hours} hours)")
+            LogEmbed.add_field(name="Reason", value=reason, inline=False)
+            LogEmbed.set_thumbnail(url=offender.avatar_url)
+            LogEmbed.set_footer(text=self.bot.footer)
+            await self.embed_log(ctx, LogEmbed)
+
+    @commands.command()
+    async def test(self, ctx:commands.Context):
+        await ctx.send("Before")
+        await asyncio.sleep(30)
+        await ctx.send("After")
 
 def setup(bot:commands.Bot):
     bot.add_cog(Moderation(bot))
