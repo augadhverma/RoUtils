@@ -18,7 +18,7 @@ If the License is not attached, see https://www.gnu.org/licenses/
 """
 
 import asyncio
-from typing import Optional
+from typing import Optional, Union
 import discord
 from discord import colour
 from discord.errors import LoginFailure
@@ -28,7 +28,7 @@ from datetime import date, datetime
 
 from utils.checks import is_admin, is_senior_staff, is_staff
 from utils.mod import Mod
-from utils.converters import to_user, to_member
+from utils.converters import to_user, TimeConverter
 
 import random
 import string
@@ -83,6 +83,66 @@ class Moderation(commands.Cog):
             return Kick(True, len(l))
         else:
             return Kick(False, len(l))
+
+    async def kick_embed(self, ctx:commands.Context, offender:Union[discord.User, discord.Member], infractions:int) -> None:
+        inf_id = self.get_inf_id()
+
+        post = {
+            "infractionId":inf_id,
+            "type":"kick",
+            "moderator":self.bot.user.id,
+            "offender":offender.id,
+            "reason":f"Auto kick after {infractions} infractions"
+        }
+
+        insert = self.db.insert(post)
+        if insert.acknowledged:
+            embed = discord.Embed(colour=discord.Color.red())
+            embed.description = f"{offender.mention} has been kicked for violating {infractions} infractions."
+            embed.set_footer(text=f"ID: {inf_id}")
+            await ctx.send(embed=embed)
+
+            offenderEmbed = discord.Embed(colour=discord.Colour.red(), title=f"You have been kicked from {ctx.guild.name}", timestamp=datetime.utcnow())
+            offenderEmbed.description = f"You have been **`kicked`** | Violated {infractions} infractions."
+            offenderEmbed.set_footer(text=f"ID: {inf_id}")
+
+            try:
+                await offender.send(embed=embed)
+            except:
+                pass
+
+            LogEmbed = discord.Embed(colour=discord.Color.red(), title="Kick", timestamp=datetime.utcnow())
+            LogEmbed.description = f"ID: `{inf_id}`"
+            LogEmbed.add_field(name="Offender", value=f"{offender.mention} `({offender.id})`")
+            LogEmbed.add_field(name="Moderator",value=self.bot.user.mention, inline=False)
+            LogEmbed.add_field(name="Reason", value=f"Violated {infractions} infractions", inline=False)
+            LogEmbed.set_footer(text=self.bot.footer)
+            LogEmbed.set_thumbnail(url=offender.avatar_url)
+            await self.embed_log(ctx=ctx, embed=LogEmbed)
+            await offender.kick(reason=f"Violated {infractions} infractions")
+
+    async def after_insert(self, ctx:commands.Context, infractionId:str, offender:Union[discord.User, discord.Member], moderator:Union[discord.User, discord.Member], reason:str, colour:discord.Colour, type1:str, type2:str) -> None:
+        embed = discord.Embed(colour=discord.Color.green())
+        embed.description = f"{offender.mention} has been **`{type1}`** | *{reason}*"
+        embed.set_footer(text=f"ID: {infractionId}")
+        await ctx.send(embed=embed)
+
+        LogEmbed = discord.Embed(colour=colour, title="{type1}", description=f"ID: `{infractionId}`", timestamp=datetime.utcnow())
+        LogEmbed.add_field(name="Offender", value=f"{offender.mention} `({offender.id})`")
+        LogEmbed.add_field(name="Moderator", value=f"<@{ctx.author.id}> `({ctx.author.id})`", inline=False)
+        LogEmbed.add_field(name="Reason", value=reason, inline=False)
+        LogEmbed.set_footer(text=self.bot.footer)
+        LogEmbed.set_thumbnail(url=offender.avatar_url)
+        await self.embed_log(ctx=ctx, embed=LogEmbed)
+
+        offenderEmbed = discord.Embed(title=f"You have been {type2} in {ctx.guild.name}",colour=discord.Color.red(), timestamp=datetime.utcnow())
+        offenderEmbed.description = f"You have been **`{type2}`** with reason: `{reason}`"
+        offenderEmbed.set_footer(text=f"ID: {infractionId}")
+
+        try:
+            await offender.send(embed=offenderEmbed)
+        except:
+            await ctx.send("I tried DMing the user but their DMs are of.", delete_after=5.0)
         
 
     @commands.command()
@@ -119,52 +179,10 @@ class Moderation(commands.Cog):
 
             
             if insert.acknowledged:
-                embed = discord.Embed(colour=discord.Color.green())
-                embed.description = f"{offender.mention} has been **`warned`** | *{reason}*"
-                embed.set_footer(text=f"ID: {inf_id}")
-                await ctx.send(embed=embed)
-
-                LogEmbed = discord.Embed(colour=discord.Colour.green(), title="Warn", description=f"ID: `{inf_id}`", timestamp=datetime.utcnow())
-                LogEmbed.add_field(name="Offender", value=f"<@{offender.id}> `({offender.id})`")
-                LogEmbed.add_field(name="Moderator", value=f"<@{ctx.author.id}> `({ctx.author.id})`", inline=False)
-                LogEmbed.add_field(name="Reason", value=reason, inline=False)
-                LogEmbed.set_footer(text=self.bot.footer)
-                LogEmbed.set_thumbnail(url=offender.avatar_url)
-                await self.embed_log(ctx=ctx, embed=LogEmbed)
-
-                offenderEmbed = discord.Embed(title=f"You have been warned in {ctx.guild.name}",colour=discord.Color.red(), timestamp=datetime.utcnow())
-                offenderEmbed.description = f"You have been **`warned`** with reason: `{reason}`"
-                offenderEmbed.set_footer(text=f"ID: {inf_id}")
-
-                try:
-                    await offender.send(embed=offenderEmbed)
-                except:
-                    await ctx.send("I tried DMing the user but their DMs are of.", delete_after=5.0)
+                await self.after_insert(ctx, inf_id, offender, ctx.author, reason, discord.Colour.green(),"warn", "warned")
                 _kick = await self.to_be_kicked(offender.id)
                 if (_kick.boolean):
-                    new_inf_id = self.get_inf_id()
-                    embed = discord.Embed(colour=discord.Colour.red())
-                    embed.description = f"{offender} has been **`kicked`** | *Violated {_kick.infractions} infractions.*"
-                    embed.set_footer(text=f"ID: {new_inf_id}")
-
-                    offenderEmbed = discord.Embed(title=f"You have been kicked from {ctx.guild.name}", colour=discord.Color.red(), timestamp=datetime.utcnow())
-                    offenderEmbed.description = f"You have been **`kicked`** with reason: `Violated {_kick.infractions} infractions`. "
-                    offenderEmbed.set_footer(text=f"ID: {new_inf_id}")
-                    await ctx.send(embed=embed)
-                    try:
-                        await offender.send(embed=offenderEmbed)
-                    except:
-                        pass
-
-                    LogEmbed = discord.Embed(colour=discord.Color.red(), title="Kick", timestamp=datetime.utcnow())
-                    LogEmbed.description = f"ID: `{new_inf_id}`"
-                    LogEmbed.add_field(name="Offender", value=f"<@{offender.id}> `({offender.id})`")
-                    LogEmbed.add_field(name="Moderator",value=self.bot.user.mention, inline=False)
-                    LogEmbed.add_field(name="Reason", value=f"Violated {_kick.infractions} infractions", inline=False)
-                    LogEmbed.set_footer(text=self.bot.footer)
-                    LogEmbed.set_thumbnail(url=offender.avatar_url)
-                    await self.embed_log(ctx=ctx, embed=LogEmbed)
-                    await offender.kick(reason=f"Violated {_kick.infractions} infractions")
+                    await self.kick_embed(ctx, offender, _kick.infractions)
 
     @warn.error
     async def warn_error(self, ctx:commands.Context, error):
@@ -211,7 +229,7 @@ class Moderation(commands.Cog):
     @commands.command()
     @commands.guild_only()
     @is_staff()
-    async def mute(self, ctx:commands.Context, offender:discord.Member,*, reason:str=None):
+    async def mute(self, ctx:commands.Context, offender:discord.Member,duration:TimeConverter,*, reason:str=None):
         mute_role = self.get_mute_role(ctx)
         if offender == ctx.author:
             return await ctx.send("You can't mute yourself <a:facepalm:797528543490867220>", delete_after=5.0)
@@ -271,29 +289,8 @@ class Moderation(commands.Cog):
 
                 _kick = await self.to_be_kicked(offender.id)
                 if (_kick.boolean):
-                    new_inf_id = self.get_inf_id()
-                    embed = discord.Embed(colour=discord.Colour.red())
-                    embed.description = f"{offender} has been **`kicked`** | *Violated {_kick.infractions} infractions.*"
-                    embed.set_footer(text=f"ID: {new_inf_id}")
-
-                    offenderEmbed = discord.Embed(title=f"You have been kicked from {ctx.guild.name}", colour=discord.Color.red(), timestamp=datetime.utcnow())
-                    offenderEmbed.description = f"You have been **`kicked`** with reason: `Violated {_kick.infractions} infractions`. "
-                    offenderEmbed.set_footer(text=f"ID: {new_inf_id}")
-                    await ctx.send(embed=embed)
-                    try:
-                        await offender.send(embed=offenderEmbed)
-                    except:
-                        pass
-
-                    LogEmbed = discord.Embed(colour=discord.Color.red(), title="Kick", timestamp=datetime.utcnow())
-                    LogEmbed.description = f"ID: `{new_inf_id}`"
-                    LogEmbed.add_field(name="Offender", value=f"<@{offender.id}> `({offender.id})`")
-                    LogEmbed.add_field(name="Moderator",value=self.bot.user.mention, inline=False)
-                    LogEmbed.add_field(name="Reason", value=f"Violated {_kick.infractions} infractions", inline=False)
-                    LogEmbed.set_footer(text=self.bot.footer)
-                    LogEmbed.set_thumbnail(url=offender.avatar_url)
-                    await self.embed_log(ctx=ctx, embed=LogEmbed)
-                    await offender.kick(reason=f"Violated {_kick.infractions} infractions")
+                    await self.kick_embed(ctx, offender, _kick.infractions)
+                    
 
     @mute.error
     async def mute_error(self, ctx:commands.Context, error):
