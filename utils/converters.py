@@ -53,18 +53,62 @@ async def to_member(ctx:commands.Context, argument:str) -> discord.Member:
     """
     return await commands.MemberConverter().convert(ctx, argument)
 
-time_regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([smhd])")
-time_dict = {"h":3600, "s":1, "m":60, "d":86400}
+
 
 class TimeConverter(commands.Converter):
     async def convert(self, ctx, argument:str) -> datetime.datetime:
-        matches = time_regex.findall(argument.lower())
-        time = 0
-        for v,k in matches:
-            try:
-                time+=time_dict[k]*float(v)
-            except KeyError:
-                raise commands.BadArgument("{} is an invalid time-key! h/m/s/d are valid!".format(k))
-            except ValueError:
-                raise commands.BadArgument("{} is not a number!".format(v))
-        return time
+        pattern = re.compile(r"([1-6])(h|m|s)")
+        args = argument.lower()
+        matches = re.findall(pattern, args)
+        time = datetime.datetime.utcnow()
+        for i, t in matches:
+            if t=="h":
+                return datetime.datetime(
+                    time.year,
+                    time.month,
+                    time.day,
+                    time.hour+int(i),
+                    time.minute,
+                    time.second,
+                    time.microsecond
+                )
+            elif t=="m":
+                return datetime.datetime(
+                    time.year,
+                    time.month,
+                    time.day,
+                    time.hour,
+                    time.minute+int(i),
+                    time.second,
+                    time.microsecond
+                )
+            elif t=="s":
+                return datetime.datetime(
+                    time.year,
+                    time.month,
+                    time.day,
+                    time.hour,
+                    time.minute,
+                    time.second+int(i),
+                    time.microsecond
+                )
+            else:
+                return datetime.datetime(
+                    time.year,
+                    time.month,
+                    time.day,
+                    time.hour+int(3),
+                    time.minute,
+                    time.second,
+                    time.microsecond
+                )
+        else:
+            return datetime.datetime(
+                    time.year,
+                    time.month,
+                    time.day,
+                    time.hour+int(3),
+                    time.minute,
+                    time.second,
+                    time.microsecond
+                )

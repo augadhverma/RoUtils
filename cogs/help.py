@@ -17,10 +17,11 @@ For more information on the License, check the LICENSE attached with this Softwa
 If the License is not attached, see https://www.gnu.org/licenses/
 """
 
-from inspect import signature
 import discord
 from discord.ext import commands
-from datetime import date, datetime
+from datetime import datetime
+
+from utils.checks import bot_channel
 
 class CustomHelp(commands.HelpCommand):
     def __init__(self, colour, footer):
@@ -113,6 +114,9 @@ class MyHelp(commands.Cog, name="Help"):
     def __init__(self, bot:commands.Bot):
         self.bot = bot
         bot.help_command = CustomHelp(colour=self.bot.colour, footer=self.bot.footer)
+
+    async def cog_check(self, ctx:commands.Context):
+        bot_channel()
 
 def setup(bot:commands.Bot):
     bot.add_cog(MyHelp(bot))

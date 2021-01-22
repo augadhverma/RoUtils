@@ -26,24 +26,26 @@ from dotenv import load_dotenv
 load_dotenv()
 
 intents = discord.Intents.all()
+prefix = [".",">","/",";"]
 
 os.environ["JISHAKU_NO_UNDERSCORE"] = "True"
 os.environ["JISHAKU_NO_DM_TRACEBACK"] = "True"
 os.environ["JISHAKU_HIDE"] = "True"
 
 bot = commands.Bot(
-    command_prefix=commands.when_mentioned_or("."),
+    command_prefix=commands.when_mentioned_or(*prefix),
     case_insensitive=True,
     intents=intents,
     allowed_mentions=discord.AllowedMentions(users=True, everyone=False, roles=False, replied_user=False)
 )
-
 bot.colour = 0x210070
 bot.footer = "RoUtils"
 
 @bot.event
 async def on_ready():
     print("{0.user} is up and running".format(bot))
+    prefix.insert(0, bot.user.mention)
+    bot.prefixes = prefix
 
 for filename in os.listdir('./cogs'):
     if filename.endswith('.py'):

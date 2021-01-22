@@ -18,8 +18,9 @@ If the License is not attached, see https://www.gnu.org/licenses/
 """
 
 import discord
+from discord import colour
 from discord.ext import commands
-from datetime import date, datetime
+from datetime import datetime
 
 from utils.requests import get
 from utils.checks import bot_channel
@@ -87,7 +88,36 @@ class Information(commands.Cog):
         """
         await ctx.send("Support Staff application: https://forms.gle/qvEMjT8RweVmJQW99")
 
+
+    @commands.command()
+    @bot_channel()
+    async def api(self, ctx:commands.Context, member:discord.Member=None):
+        if not member:
+            member=ctx.author
+
+        e = discord.Embed(colour=self.bot.colour, title="RoWifi Users API", timestamp=datetime.utcnow())
+        e.description = f"Base: `https://api.rowifi.link/v1/users/<USERID>`\n\nExample: https://api.rowifi.link/v1/users/{member.id}"
+        e.add_field(
+            name="Responses",
+            value='• If user is verified:\n`{"success":true,"discord_id":int,"roblox_id":int}`\n\n• If user is not verified:\n`{"success":false,"message":"User is not verified in the RoWifi database"}`'
+        )
+        e.add_field(
+            name="Ratelimits",
+            value="At the moment, there are no ratelimits",
+            inline=False
+        )
+        e.set_author(name=str(member), icon_url=member.avatar_url)
+
+        await ctx.send(embed=e)
     
+    @commands.command(aliases=['prefixes'])
+    @bot_channel()
+    async def prefix(self, ctx:commands.Context):
+        """Shows all the prefix of the bot"""
+        embed = discord.Embed(title="Prefixes", colour=self.bot.colour)
+        embed.set_footer(text=f"{len(self.bot.prefixes)} prefixes")
+        embed.description = '\n'.join(f'{index}. {elem}' for index, elem in enumerate(self.bot.prefixes, 1))
+        await ctx.send(embed=embed)
 
 def setup(bot:commands.Bot):
     bot.add_cog(Information(bot))
