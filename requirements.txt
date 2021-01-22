@@ -1,6 +1,8 @@
-aiohttp==3.6.2
+aiohttp==3.7.3
 discord.py==1.6.0
 dnspython==2.0.0
 jishaku==1.19.1.200
 motor==2.3.0
 pymongo==3.11.2
+psutil
+python-dotenv

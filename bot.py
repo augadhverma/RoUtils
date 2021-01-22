@@ -40,6 +40,8 @@ bot = commands.Bot(
 )
 bot.colour = 0x210070
 bot.footer = "RoUtils"
+bot.version = "Version 1.0"
+bot.github_url = "https://github.com/ItsArtemiz/RoUtils"
 
 @bot.event
 async def on_ready():

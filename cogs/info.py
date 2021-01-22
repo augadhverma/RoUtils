@@ -17,15 +17,18 @@ For more information on the License, check the LICENSE attached with this Softwa
 If the License is not attached, see https://www.gnu.org/licenses/
 """
 
+import asyncio
 import discord
-from discord import colour
 from discord.ext import commands
 from datetime import datetime
+from jishaku import Jishaku
 
 from utils.requests import get
 from utils.checks import bot_channel
 
 import typing
+import psutil
+import platform, multiprocessing, inspect
 
 class Information(commands.Cog):
     def __init__(self, bot:commands.Bot):
@@ -117,6 +120,56 @@ class Information(commands.Cog):
         embed = discord.Embed(title="Prefixes", colour=self.bot.colour)
         embed.set_footer(text=f"{len(self.bot.prefixes)} prefixes")
         embed.description = '\n'.join(f'{index}. {elem}' for index, elem in enumerate(self.bot.prefixes, 1))
+        await ctx.send(embed=embed)
+
+
+    @commands.command()
+    @bot_channel()
+    async def stats(self, ctx:commands.Context):
+        """Shows Bot Statistics"""
+        embed = discord.Embed(title="<a:loading:801422257221271592> Gathering Stats", colour=self.bot.colour)
+        msg = await ctx.send(embed=embed)
+        channel_types = typing.Counter(type(c) for c in self.bot.get_all_channels())
+        voice = channel_types[discord.channel.VoiceChannel]
+        text = channel_types[discord.channel.TextChannel]
+        infoembed = discord.Embed(
+            title="<a:settings:801424449542815744> Stats",
+            description=f"<:member:789445545915580486> Member Count: `{len(self.bot.users)}`\n<:discord:801425079937663017> Servers: `{len(self.bot.guilds)}`\n<:code:801425080936038400> Commands: `{len(self.bot.commands)}`\n<:text:789428500003029013> Text Channels: `{text}`\n<:voice:789428500309475408> Voice Channels: `{voice}`\n<:dpy:789493535501058078> DPY Version: `{discord.__version__}`\n<:python:789493535493718026> Python Version: `{platform.python_version()}`\n<:server:801426535637712956> Server: `{platform.system()}`\n> CPU Count: `{multiprocessing.cpu_count()}`\n> CPU Usage: `{psutil.cpu_percent()}%`\n> RAM: `{psutil.virtual_memory().percent}%`",
+            colour=self.bot.colour
+        )
+        infoembed.set_footer(text=self.bot.version)
+        await asyncio.sleep(2)
+        await msg.edit(embed=infoembed)
+
+    @commands.command(aliases=['src'])
+    @bot_channel()
+    async def source(self, ctx:commands.Context, *, command:str=None):
+        if not command:
+            embed = discord.Embed(title="Here is my source code.",
+                                  description="Don't forget the license! (A star would also be appreciated ^^)",
+                                  url=ctx.bot.github_url, colour=ctx.bot.colour)
+            return await ctx.send(embed=embed)
+
+        command = ctx.bot.help_command if command.lower() == "help" else ctx.bot.get_command(command)
+        if not command:
+            return await ctx.send("Couldn't find command.")
+        if isinstance(command.cog, Jishaku):
+            return await ctx.send("<https://github.com/Gorialis/jishaku>")
+
+        if isinstance(command, commands.HelpCommand):
+            lines, starting_line_num = inspect.getsourcelines(type(command))
+            filepath = f"{command.__module__.replace('.', '/')}.py"
+        else:
+            lines, starting_line_num = inspect.getsourcelines(command.callback.__code__)
+            filepath = f"{command.callback.__module__.replace('.', '/')}.py"
+
+        ending_line_num = starting_line_num + len(lines) - 1
+        command = "help" if isinstance(command, commands.HelpCommand) else command
+        embed = discord.Embed(
+            title=f"Here is my source code for the `{command}` command.",
+            description="Don't forget the license! (A star would also be appreciated ^^)",
+            url=f"https://github.com/ItsArtemiz/RoUtils/blob/master/{filepath}#L{starting_line_num}-L{ending_line_num}",
+            colour=ctx.bot.colour)
         await ctx.send(embed=embed)
 
 def setup(bot:commands.Bot):
