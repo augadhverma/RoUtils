@@ -11,6 +11,7 @@ from utils.classes import RobloxUser
 from utils.requests import get
 from utils.errors import RobloxUserNotFound
 from utils.checks import bot_channel
+from utils.db import Connection
 
 class Requests:
     async def roblox_info(self, user:int) -> RobloxUser:
@@ -26,6 +27,7 @@ class Information(commands.Cog, description="Info related stuff."):
         self.bot = bot
         self.cache = Cache()
         self.requests = Requests()
+        self.tag_db = Connection("Utilities","Tags")
 
 
     @commands.command(aliases=['ui'])
@@ -132,6 +134,10 @@ class Information(commands.Cog, description="Info related stuff."):
         end = time.perf_counter()
         duration = (end-start)*1000
 
+        db_start = time.perf_counter()
+        await self.tag_db.count_documents({})
+        db_end = time.perf_counter()
+        db_duration = (db_end - db_start)*1000
 
         embed = discord.Embed(
             colour = self.bot.colour,
@@ -148,6 +154,11 @@ class Information(commands.Cog, description="Info related stuff."):
         embed.add_field(
             name="<:routils:802250413973831712> | Websocket",
             value=f"`{(self.bot.latency*1000):.2f}ms`"
+        )
+
+        embed.add_field(
+            name="<:mongo:810927324731539508> Database",
+            value=f"`{db_duration:.2f}ms`"
         )
 
         await msg.edit(embed=embed, content="")
