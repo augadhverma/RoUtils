@@ -39,3 +39,6 @@ class Connection:
 
     async def count_documents(self, filter:dict, *args, **kwargs) -> int:
         return await self.collection.count_documents(filter, *args, **kwargs)
+
+    async def find_one_and_delete(self, filter:dict) -> dict:
+        return await self.collection.find_one_and_delete(filter)
