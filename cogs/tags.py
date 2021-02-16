@@ -9,6 +9,7 @@ from datetime import datetime
 from utils.db import Connection
 from utils.checks import staff
 from utils.cache import Cache, CacheType
+from utils.classes import TagPages
 
 mentions = discord.AllowedMentions(
     everyone=False,
@@ -16,22 +17,7 @@ mentions = discord.AllowedMentions(
     roles=False
 )
 
-class Paginator(menus.ListPageSource):
-    def __init__(self, data, title, colour, footer):
-        self.title= title
-        self.colour = colour
-        self.footer = footer
-        super().__init__(data, per_page=5)
 
-    async def format_page(self, menu, data):
-        embed = discord.Embed(
-            title=self.title,
-            colour=self.colour,
-            timestamp=datetime.utcnow(),
-            description = "\n".join(item for item in data)
-        )
-        embed.set_footer(text=self.footer)
-        return embed
 
 class Tags(commands.Cog):
     def __init__(self, bot:commands.Bot):
@@ -67,7 +53,7 @@ class Tags(commands.Cog):
         document = {
             "owner":user.id,
             "name":name,
-            "content":escape_mentions(content)
+            "content":content
         }
         tag = await self.tag_db.insert_one(document)
         return tag.acknowledged
@@ -95,9 +81,13 @@ class Tags(commands.Cog):
             await ctx.send(f"Tag **{name}** not found.")
 
     @staff()
-    @tag.command()
-    async def create(self, ctx:commands.Context,name:str,*,content:str):
+    @tag.command(aliases=['add','+', 'new'])
+    async def create(self, ctx:commands.Context,name:str,*,content:commands.clean_content):
         """Creates a new tag"""
+        cmds = ctx.command.parent.commands
+        for cmd in cmds:
+            if name == cmd.name:
+                return await ctx.send(f"**{name}** is a reserved keyword and cannot be used to make a new tag.")
         tag = await self.get_tag(name)
         if tag:
             await ctx.send(f"Tag **{name}** already exists.")
@@ -110,7 +100,7 @@ class Tags(commands.Cog):
             await ctx.send("Unable to create tag at the moment.")
 
     @staff()
-    @tag.command()
+    @tag.command(aliases=['remove','-'])
     async def delete(self, ctx:commands.Context, *,name:str):
         """Deletes a tag"""
         await self.delete_tag(ctx, ctx.author, name)
@@ -127,7 +117,7 @@ class Tags(commands.Cog):
             await ctx.send(content=escape_markdown(tag))
 
     @staff()
-    @tag.command()
+    @tag.command(aliases=['update'])
     async def edit(self, ctx:commands.Context, name:str, *,content:str):
         """Updates an existing tag"""
 
@@ -163,16 +153,36 @@ class Tags(commands.Cog):
         await ctx.author.send(tag['content'])
 
     @staff()
-    @tag.command(name="list")
+    @tag.command(name="list", aliases=['all'])
     async def _list(self, ctx:commands.Context):
         """Shows all the registered tags"""
-        tags = []
-        data = self.tag_db.find({})
-        async for x in data:
-            tags.append(x['name'])
-        menu = menus.MenuPages(source=Paginator(tags, "All Tags", self.bot.colour, self.bot.footer))
+        a = []
+        tags = self.tag_db.find({})
+        async for t in tags:
+            a.append(t)
+
+        if not len(a):
+            return await ctx.send("There are no tags.")
+
+        menu = menus.MenuPages(source=TagPages(entries=a, per_page=20))
         await menu.start(ctx)
 
+    @staff()
+    @commands.command()
+    async def tags(self, ctx:commands.Context):
+        """Shows all the registered tags
+        
+        An alias for `tag list`"""
+        a = []
+        tags = self.tag_db.find({})
+        async for t in tags:
+            a.append(t)
+
+        if not len(a):
+            return await ctx.send("There are no tags.")
+
+        menu = menus.MenuPages(source=TagPages(entries=a, per_page=20))
+        await menu.start(ctx)
 
 
 
