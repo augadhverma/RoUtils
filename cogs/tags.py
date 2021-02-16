@@ -1,3 +1,4 @@
+import asyncio
 import discord
 
 from typing import Union
@@ -7,7 +8,7 @@ from discord.utils import escape_mentions, escape_markdown
 from datetime import datetime
 
 from utils.db import Connection
-from utils.checks import staff
+from utils.checks import staff, council
 from utils.cache import Cache, CacheType
 from utils.classes import TagPages
 
@@ -61,11 +62,11 @@ class Tags(commands.Cog):
     async def delete_tag(self, ctx:commands.Context, user:discord.Member, name:str) -> None:
         tag = await self.tag_db.find_one({'name':name})
         if tag:
-            if tag['owner'] == user.id:
+            if tag['owner'] == user.id or council():
                 await self.tag_db.delete_one({'name':name})
                 await ctx.send("Successfully deleted the tag \U0001f44c")
             else:
-                await ctx.send("You are not the owner of the tag **{name}**")
+                await ctx.send(f"You are not the owner of the tag **{name}**")
         else:
             await ctx.send(f"Cannot find tag **{name}**.")
         
@@ -124,7 +125,7 @@ class Tags(commands.Cog):
         tag = await self.tag_db.find_one({'name':name})
         if tag:
             if tag['owner'] == ctx.author.id:
-                await self.tag_db.update_one({'name':name},{'content':content})
+                await self.tag_db.update_one({'name':name},{"$set":{'content':content}})
                 await ctx.send("Successfully updated the tag \U0001f44c")
             else:
                 await ctx.send("You can't edit someone elses tag.")

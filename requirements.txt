@@ -1,0 +1,6 @@
+discord.py==1.6.0
+git+https://github.com/Rapptz/discord-ext-menus
+dnspython
+jishaku
+motor==2.3.0
+pymongo
