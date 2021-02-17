@@ -1,3 +1,4 @@
+from typing import Iterable
 import discord
 
 from datetime import datetime
@@ -5,13 +6,9 @@ from discord.ext import menus, commands
 from discord.utils import get
 from enum import Enum
 
-class DiscordUser:
-    def __init__(self, user:discord.User) -> None:
-        self.user = user
-
-class DiscordMember:
-    def __init__(self, member:discord.Member) -> None:
-        self.member = member
+class DiscordUser(commands.Converter):
+    async def convert(self, ctx, argument):
+        return await commands.UserConverter().convert(ctx, argument)
 
 class RobloxUser:
     def __init__(self, info:dict, discord_id:int) -> None:
@@ -100,3 +97,46 @@ class EmbedLog:
                 return await channel.send(embed=self.embed)
             except:
                 return
+
+class InfractionEntry:
+    __slots__ = ("time", "reason","type","id")
+    def __init__(self, ctx, entry:dict) -> None:
+        self.ctx = ctx
+        self.entry = entry
+        self.time = f"* | Duration: {self.entry['time']}*" if self.entry['time'] else ""
+        self.reason = f"{self.entry['reason']} + {self.time}"
+        self.type = InfractionType[self.entry['type']].name
+        self.id = self.entry['id']
+
+    @property
+    async def moderator(self) -> discord.User:
+        return await DiscordUser().convert(self.ctx, str(self.entry['moderator']))
+
+    @property
+    async def offender(self) -> discord.User:
+        return await DiscordUser().convert(self.ctx, str(self.entry['offender']))
+
+
+class InfractionEmbed:
+    def __init__(self, ctx, entries:Iterable):
+        self.ctx = ctx
+        self.entries = entries
+    
+    async def moderator(self, id:int) -> discord.User:
+        return await DiscordUser().convert(self.ctx, str(id))
+
+    async def embed_builder(self) -> discord.Embed:
+        embed = discord.Embed(
+            colour = discord.Color.blurple(),
+            title = f"{len(self.entries)} Infractions Found"
+        )
+        for entry in self.entries:
+            try:
+                embed.add_field(
+                    name = f"#{entry['id']} | {InfractionType(entry['type']).name}",
+                    value = f"**Moderator:** {await self.moderator(entry['moderator'])}\n**Reason:** {entry['reason']}\n**Offender:** {await self.moderator(entry['offender'])}"
+                )
+            except:
+                pass
+
+        return embed

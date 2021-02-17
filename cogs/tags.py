@@ -8,7 +8,7 @@ from discord.utils import escape_mentions, escape_markdown
 from datetime import datetime
 
 from utils.db import Connection
-from utils.checks import staff, council
+from utils.checks import COUNCIL, MANAGEMENT, staff, council
 from utils.cache import Cache, CacheType
 from utils.classes import TagPages
 
@@ -62,7 +62,10 @@ class Tags(commands.Cog):
     async def delete_tag(self, ctx:commands.Context, user:discord.Member, name:str) -> None:
         tag = await self.tag_db.find_one({'name':name})
         if tag:
-            if tag['owner'] == user.id or council():
+            if tag['owner'] == user.id:
+                await self.tag_db.delete_one({'name':name})
+                await ctx.send("Successfully deleted the tag \U0001f44c")
+            elif MANAGEMENT in [role.id for role in ctx.author.roles] or COUNCIL in [role.id for role in ctx.author.roles]:
                 await self.tag_db.delete_one({'name':name})
                 await ctx.send("Successfully deleted the tag \U0001f44c")
             else:

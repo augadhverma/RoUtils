@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Optional, Union
 import discord
 
 from discord.ext import commands
@@ -8,7 +8,7 @@ from random import choice
 
 from utils.db import Connection
 from utils.checks import staff, senior_staff, council
-from utils.classes import InfractionType, EmbedInfractionType, EmbedLog, InfractionColour
+from utils.classes import InfractionType, EmbedInfractionType, EmbedLog, InfractionColour, InfractionEmbed
 
 from cogs.tags import Tags
 
@@ -95,6 +95,27 @@ class Moderation(commands.Cog):
         )
 
         await EmbedLog(ctx, embed).post_log()
+
+    @staff()
+    @commands.command()
+    async def warns(self, ctx:commands.Context, user:Optional[discord.Member]):
+        """Shows warns of a user or everyone"""
+        container = []
+        if not user:
+            infs = self.mod_db.find({})
+            async for inf in infs:
+                container.append(inf)
+            if not container:
+                return await ctx.send("The server is squeaky clean. <:noice:811536531839516674> ")
+        elif user:
+            infs = self.mod_db.find({"offender":{"$eq":user.id}})
+            async for inf in infs:
+                container.append(inf)
+
+            if not container:
+                return await ctx.send(f"**{user}** is squeaky clean. <:noice:811536531839516674> ")
+        embed = await InfractionEmbed(ctx, container).embed_builder()
+        await ctx.send(embed=embed)
 
     @staff()
     @commands.command()
