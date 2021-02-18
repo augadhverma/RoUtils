@@ -139,4 +139,7 @@ class InfractionEmbed:
             except:
                 pass
 
+        if len(self.entries) > 24:
+            embed.description = f"Displaying {24}/{len(self.entries)} infractions."
+
         return embed

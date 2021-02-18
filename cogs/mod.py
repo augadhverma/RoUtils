@@ -8,7 +8,7 @@ from random import choice
 
 from utils.db import Connection
 from utils.checks import staff, senior_staff, council
-from utils.classes import InfractionType, EmbedInfractionType, EmbedLog, InfractionColour, InfractionEmbed
+from utils.classes import DiscordUser, InfractionType, EmbedInfractionType, EmbedLog, InfractionColour, InfractionEmbed
 
 from cogs.tags import Tags
 
@@ -67,9 +67,9 @@ class Moderation(commands.Cog):
         await self.mod_db.insert_one(document)
         return document
 
-    async def delete_infraction(self, id:str, reason:str):
+    async def delete_infraction(self, id:str) -> dict:
         document = await self.mod_db.find_one_and_delete({"id":{"$eq":id}})
-        print(document)
+        return document
 
     @staff()
     @commands.command()
@@ -120,8 +120,43 @@ class Moderation(commands.Cog):
     @staff()
     @commands.command()
     async def rw(self, ctx:commands.Context, id:int, *,reason:str):
-        await self.delete_infraction(id, reason)
-        await ctx.send("\U0001f44c")
+        document = await self.delete_infraction(id)
+        if document:
+            await ctx.send("\U0001f44c")
+        else:
+            return await ctx.send("\U0001f44e")
+
+        type = InfractionType(document['type']).name
+
+        inf_id = document['id']
+
+        embed = discord.Embed(
+            title = f"Infraction Removed ({type} | Case #{inf_id})",
+            colour = discord.Color.greyple(),
+            timestamp=datetime.utcnow()
+        )
+
+        moderator = await DiscordUser().convert(ctx, str(document['moderator']))
+        offender = await DiscordUser().convert(ctx, str(document['offender']))
+
+        embed.description = f"**Offender:** {offender.mention} `({offender.id})`\n**Reason:** {document['reason']}\n**Moderator:** {moderator.mention} `({moderator.id})`"
+
+        embed.add_field(
+            name="Removed by",
+            inline=False,
+            value=f"{ctx.author.mention} `({ctx.author.id})`"
+        )
+        
+        embed.add_field(
+            name="Reason for Removal",
+            value=reason
+        )
+
+
+        embed.set_thumbnail(url=offender.avatar_url)
+        embed.set_footer(text=self.bot.footer)
+        await EmbedLog(ctx, embed).post_log()
+        
 
 
 def setup(bot):
