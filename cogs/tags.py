@@ -1,15 +1,16 @@
 import asyncio
 import discord
 
-from typing import Union
+from typing import Optional, Union
+from datetime import datetime
+from collections import Counter
 
 from discord.ext import commands, menus
-from discord.utils import escape_mentions, escape_markdown
-from datetime import datetime
+from discord.utils import escape_markdown
 
 from utils.db import Connection
 from utils.checks import COUNCIL, MANAGEMENT, staff, council
-from utils.cache import Cache, CacheType
+from utils.cache import Cache
 from utils.classes import TagPages
 
 mentions = discord.AllowedMentions(
@@ -17,7 +18,6 @@ mentions = discord.AllowedMentions(
     users=False,
     roles=False
 )
-
 
 
 class Tags(commands.Cog):
@@ -41,20 +41,21 @@ class Tags(commands.Cog):
 
 
     async def get_tag(self, name:str) -> Union[str, None]:
-        exist = self.cache.get(CacheType.Tag, name)
-        if exist:
-            return exist
-        tag = await self.tag_db.find_one({'name':name.lower()})
+        tag = await self.tag_db.find_one({'name':name})
         if tag:
-            self.cache.set(CacheType.Tag, name, tag['content'])
+            await self.tag_db.update_one({'name':name},{"$set":{"uses":tag['uses']+1}})
             return tag['content']
         return None
 
     async def create_tag(self, user:discord.Member,name:str, content:str) -> bool:
+        created = datetime.utcnow()
         document = {
             "owner":user.id,
             "name":name,
-            "content":content
+            "content":content,
+            "id":created.microsecond,
+            "uses":0,
+            "created":created
         }
         tag = await self.tag_db.insert_one(document)
         return tag.acknowledged
@@ -66,6 +67,9 @@ class Tags(commands.Cog):
                 await self.tag_db.delete_one({'name':name})
                 await ctx.send("Successfully deleted the tag \U0001f44c")
             elif MANAGEMENT in [role.id for role in ctx.author.roles] or COUNCIL in [role.id for role in ctx.author.roles]:
+                await self.tag_db.delete_one({'name':name})
+                await ctx.send("Successfully deleted the tag \U0001f44c")
+            elif await self.bot.is_owner(ctx.author):
                 await self.tag_db.delete_one({'name':name})
                 await ctx.send("Successfully deleted the tag \U0001f44c")
             else:
@@ -146,22 +150,25 @@ class Tags(commands.Cog):
 
         embed = discord.Embed(
             colour = self.bot.colour,
-            timestamp=datetime.utcnow(),
-            title=name
+            timestamp=tag['created'],
+            title=f"{name} (ID: {tag['id']})"
         )
-        embed.set_footer(text=self.bot.footer)
+        embed.set_footer(text="Tag Created At")
         embed.set_author(name=user.name, icon_url=user.avatar_url)
-        embed.description = f"The tag is {len(tag['content'])} characters long and has been sent to you in DMs."
+        embed.add_field(name="Owner", value=user.mention)
+        embed.add_field(name="Uses", value=tag['uses'])
 
         await ctx.send(embed=embed)
-        await ctx.author.send(tag['content'])
 
     @staff()
     @tag.command(name="list", aliases=['all'])
-    async def _list(self, ctx:commands.Context):
+    async def _list(self, ctx:commands.Context, user:Optional[discord.User]):
         """Shows all the registered tags"""
         a = []
-        tags = self.tag_db.find({})
+        if not user:
+            tags = self.tag_db.find({})
+        else:
+            tags = self.tag_db.find({'owner':user.id})
         async for t in tags:
             a.append(t)
 
@@ -173,12 +180,15 @@ class Tags(commands.Cog):
 
     @staff()
     @commands.command()
-    async def tags(self, ctx:commands.Context):
+    async def tags(self, ctx:commands.Context, user:Optional[discord.User]):
         """Shows all the registered tags
         
         An alias for `tag list`"""
         a = []
-        tags = self.tag_db.find({})
+        if not user:
+            tags = self.tag_db.find({})
+        else:
+            tags = self.tag_db.find({'owner':user.id})
         async for t in tags:
             a.append(t)
 

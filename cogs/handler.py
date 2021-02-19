@@ -70,6 +70,8 @@ class Handler(commands.Cog):
                 await ctx.send(error.errors[1])
                 return
 
+        elif isinstance(error, (commands.MemberNotFound, commands.UserNotFound)):
+            return await ctx.send(f'User "{error.argument}" not found')
 
         elif isinstance(error, private):
             await ctx.send(error.message)

@@ -1,6 +1,7 @@
-from typing import Iterable
 import discord
+import re
 
+from typing import Iterable
 from datetime import datetime
 from discord.ext import menus, commands
 from discord.utils import get
@@ -29,7 +30,7 @@ class RobloxUser:
 class TagPageEntry:
     __slots__ = ('id','name')
     def __init__(self, entry) -> None:
-        self.id = entry['_id']
+        self.id = entry['id']
         self.name = entry['name']
 
 class TagPages(menus.ListPageSource):
@@ -37,7 +38,7 @@ class TagPages(menus.ListPageSource):
         converted = []
         index = 1
         for entry in entries:
-            name = f"{index}. {TagPageEntry(entry).name} (ID: {str(TagPageEntry(entry).id)[-1:-7:-1]})"
+            name = f"{index}. {TagPageEntry(entry).name} (ID: {str(TagPageEntry(entry).id)})"
             converted.append(name)
             index+=1
 
@@ -103,7 +104,7 @@ class InfractionEntry:
     def __init__(self, ctx, entry:dict) -> None:
         self.ctx = ctx
         self.entry = entry
-        self.time = f"* | Duration: {self.entry['time']}*" if self.entry['time'] else ""
+        self.time = f"* | Duration: {self.entry['expires']}*" if self.entry['expires'] else ""
         self.reason = f"{self.entry['reason']} + {self.time}"
         self.type = InfractionType[self.entry['type']].name
         self.id = self.entry['id']
@@ -168,3 +169,40 @@ class UserInfractionEmbed:
         embed.set_footer(text=footer)
 
         return embed
+
+class TimeConverter(commands.Converter):
+    def __init__(self):
+        pass
+    async def convert(self, ctx:commands.Context, argument:str) -> datetime:
+        regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([mh])")
+        hours = 0
+        minutes = 0
+
+        matches = regex.findall(argument.lower())
+        print(matches)
+        for duration, time in matches:
+            print(duration, time)
+            if time == "h":
+                print(time)
+                hours+=int(duration)
+                print(hours)
+            if time == "m":
+                print(time)
+                minutes+=int(minutes)
+                print(minutes)
+
+        print(hours, minutes)
+        
+        
+
+        now = datetime.utcnow()
+        return datetime(
+            now.year,
+            now.month,
+            now.day,
+            now.hour + hours,
+            now.minute + minutes,
+            now.second,
+            now.microsecond,
+            now.tzinfo
+        )

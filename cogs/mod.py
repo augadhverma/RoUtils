@@ -7,7 +7,7 @@ from collections import Counter
 
 from utils.db import Connection
 from utils.checks import staff, senior_staff, council
-from utils.classes import DiscordUser, InfractionType, EmbedLog, InfractionColour, InfractionEmbed, UserInfractionEmbed
+from utils.classes import DiscordUser, InfractionType, EmbedLog, InfractionColour, InfractionEmbed, TimeConverter, UserInfractionEmbed
 
 
 class Moderation(commands.Cog):
@@ -15,9 +15,12 @@ class Moderation(commands.Cog):
         self.bot = bot
         self.mod_db = Connection("Utilities","Infractions")
 
-    def hierarchy_check(self, user:discord.Member, user2:discord.Member):
-        pass
-
+    def hierarchy_check(self, user:discord.Member, user2:discord.Member) -> bool:
+        if user.top_role<=user2.top_role:
+            return False
+        elif user2.bot:
+            return False
+        return True
     async def get_or_fetch_user(self, id:int):
         user = self.bot.get_user(id)
         if user:
@@ -62,7 +65,7 @@ class Moderation(commands.Cog):
             "offender":offender.id,
             "moderator":moderator.id,
             "reason":reason,
-            "time":time,
+            "expires":time,
             "added":datetime.utcnow()
         }
 
@@ -77,6 +80,9 @@ class Moderation(commands.Cog):
     @commands.command()
     async def warn(self, ctx:commands.Context, offender:discord.Member, *,reason:commands.clean_content):
         """Warns a user"""
+
+        if not self.hierarchy_check(ctx.author, offender):
+            return await ctx.send("You cannot perform that action due to the hierarchy.")
 
         doc = await self.append_infraction(
             InfractionType.warn,
@@ -178,6 +184,14 @@ class Moderation(commands.Cog):
         await EmbedLog(ctx, embed).post_log()
         
 
+    @staff()
+    @commands.command(aliases=['m'])
+    async def mute(self, ctx:commands.Context, member:discord.Member, duration:Optional[int], *,reason:str):
+        await ctx.send(f"{member} | {duration} | {reason}")
 
+
+    @commands.command()
+    async def test(self, ctx:commands.Context, time:TimeConverter):
+        await ctx.send(await TimeConverter().convert(ctx, str(time)) - datetime.utcnow())
 def setup(bot):
     bot.add_cog(Moderation(bot))
