@@ -133,7 +133,7 @@ class InfractionEmbed:
         for entry in self.entries:
             try:
                 embed.add_field(
-                    name = f"#{entry['id']} | {InfractionType(entry['type']).name}",
+                    name = f"#{entry['id']} | {InfractionType(entry['type']).name} | {datetime.strftime(entry['added'],'%Y-%m-%d')}",
                     value = f"**Moderator:** {await self.moderator(entry['moderator'])}\n**Reason:** {entry['reason']}\n**Offender:** {await self.moderator(entry['offender'])}"
                 )
             except:
@@ -141,5 +141,30 @@ class InfractionEmbed:
 
         if len(self.entries) > 24:
             embed.description = f"Displaying {24}/{len(self.entries)} infractions."
+
+        return embed
+
+
+class UserInfractionEmbed:
+    def __init__(self, type:InfractionType, reason:str, id:int):
+        self.type = type
+        self.embed_type = str(EmbedInfractionType[self.type.name])
+        self.reason = reason
+        self.id = id
+
+    def embed(self) -> discord.Embed:
+        embed = discord.Embed(
+            title = f"You have been {self.embed_type}. | Case Id: #{self.id}",
+            colour = InfractionColour[self.type.name].value,
+            description = f"**Reason:** {self.reason}",
+            timestamp = datetime.utcnow()
+        )
+
+        if self.type == InfractionType.ban:
+            embed.add_field(name="Appeal Form", value="https://forms.gle/5nPGXqiReY7SEHwv8")
+            footer = "To appeal for your ban, please use the form above."
+        else:
+            footer = f"To appeal your {self.type}, please contact a staff member."
+        embed.set_footer(text=footer)
 
         return embed

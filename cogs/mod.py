@@ -1,21 +1,22 @@
-from typing import Optional, Union
 import discord
 
 from discord.ext import commands
 from datetime import datetime
-from string import ascii_letters
-from random import choice
+from typing import Optional, Union
+from collections import Counter
 
 from utils.db import Connection
 from utils.checks import staff, senior_staff, council
-from utils.classes import DiscordUser, InfractionType, EmbedInfractionType, EmbedLog, InfractionColour, InfractionEmbed
+from utils.classes import DiscordUser, InfractionType, EmbedLog, InfractionColour, InfractionEmbed, UserInfractionEmbed
 
-from cogs.tags import Tags
 
 class Moderation(commands.Cog):
     def __init__(self, bot:commands.Bot):
         self.bot = bot
         self.mod_db = Connection("Utilities","Infractions")
+
+    def hierarchy_check(self, user:discord.Member, user2:discord.Member):
+        pass
 
     async def get_or_fetch_user(self, id:int):
         user = self.bot.get_user(id)
@@ -61,7 +62,8 @@ class Moderation(commands.Cog):
             "offender":offender.id,
             "moderator":moderator.id,
             "reason":reason,
-            "time":time
+            "time":time,
+            "added":datetime.utcnow()
         }
 
         await self.mod_db.insert_one(document)
@@ -96,17 +98,35 @@ class Moderation(commands.Cog):
 
         await EmbedLog(ctx, embed).post_log()
 
+        user_embed = UserInfractionEmbed(InfractionType.warn, reason, doc['id']).embed()
+        try:
+            await offender.send(embed=user_embed)
+        except:
+            await ctx.send("Couldn't DM the user since their DMs are closed", delete_after=5.0)
+
     @staff()
     @commands.command()
     async def warns(self, ctx:commands.Context, user:Optional[discord.Member]):
         """Shows warns of a user or everyone"""
         container = []
         if not user:
+            description = ""
             infs = self.mod_db.find({})
             async for inf in infs:
-                container.append(inf)
+                container.append(inf['offender'])
             if not container:
                 return await ctx.send("The server is squeaky clean. <:noice:811536531839516674> ")
+
+            embed = discord.Embed(
+                colour=discord.Color.blurple(),
+                title=f"The server has {len(container)} infractions.",
+            )
+            embed.set_footer(text=f"Run {ctx.prefix}warns <user> for infractions of a particular user.")
+            for offender, infractions in Counter(container).items():
+                description+=f"{(await self.get_or_fetch_user(offender)).mention} - {infractions} infractions\n"
+            embed.description = description
+            await ctx.send(embed=embed)
+
         elif user:
             infs = self.mod_db.find({"offender":{"$eq":user.id}})
             async for inf in infs:
@@ -114,12 +134,12 @@ class Moderation(commands.Cog):
 
             if not container:
                 return await ctx.send(f"**{user}** is squeaky clean. <:noice:811536531839516674> ")
-        embed = await InfractionEmbed(ctx, container).embed_builder()
-        await ctx.send(embed=embed)
+            embed = await InfractionEmbed(ctx, container).embed_builder()
+            return await ctx.send(embed=embed)
 
     @staff()
-    @commands.command()
-    async def rw(self, ctx:commands.Context, id:int, *,reason:str):
+    @commands.command(aliases=['rw'])
+    async def removewarn(self, ctx:commands.Context, id:int, *,reason:str):
         document = await self.delete_infraction(id)
         if document:
             await ctx.send("\U0001f44c")
