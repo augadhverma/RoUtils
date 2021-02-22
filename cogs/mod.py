@@ -112,17 +112,19 @@ class Moderation(commands.Cog):
 
     @staff()
     @commands.command()
-    async def warns(self, ctx:commands.Context, user:Optional[discord.Member]):
+    async def warns(self, ctx:commands.Context, user:Optional[discord.User]):
         """Shows warns of a user or everyone"""
         container = []
         if not user:
             description = ""
             infs = self.mod_db.find({})
             async for inf in infs:
-                container.append(inf['offender'])
+                if inf['type'] == int(InfractionType.unban):
+                    pass
+                else:
+                    container.append(inf['offender'])
             if not container:
                 return await ctx.send("The server is squeaky clean. <:noice:811536531839516674> ")
-
             embed = discord.Embed(
                 colour=discord.Color.blurple(),
                 title=f"The server has {len(container)} infractions.",
@@ -136,7 +138,10 @@ class Moderation(commands.Cog):
         elif user:
             infs = self.mod_db.find({"offender":{"$eq":user.id}})
             async for inf in infs:
-                container.append(inf)
+                if inf['type'] == int(InfractionType.unban):
+                    pass
+                else:
+                    container.append(inf)
 
             if not container:
                 return await ctx.send(f"**{user}** is squeaky clean. <:noice:811536531839516674> ")
@@ -204,11 +209,8 @@ class Moderation(commands.Cog):
         if limit > 2000:
             return await ctx.send(f'Too many messages to search given ({limit}/2000)')
         
-        def check(m):
-            return predicate and not m.pinned
-
         try:
-            deleted = await ctx.channel.purge(limit=limit, check=check)
+            deleted = await ctx.channel.purge(limit=limit, check=predicate)
         except discord.Forbidden as e:
             return await ctx.send('I do not have permissions to delete messages.')
         except discord.HTTPException as e:
@@ -236,10 +238,161 @@ class Moderation(commands.Cog):
     @staff()
     @commands.group(invoke_without_command=True, aliases=['clear'])
     async def purge(self, ctx:commands.Context, search=1):
-        """Deletes messages."""
-        await self.do_removal(ctx, search, lambda e: True)
+        """Deletes messages.
+        
+        Ignores pinned messages"""
+        def pred(m):
+            return not m.pinned
+        await self.do_removal(ctx, search, pred)
 
-    
+    @staff()
+    @purge.command()
+    async def embeds(self, ctx:commands.Context, search=1):
+        """Removes messages that have embeds in them."""
+        await self.do_removal(ctx, search, lambda e: len(e.embeds))
+
+    @staff()
+    @purge.command()
+    async def files(self, ctx:commands.Context, search=1):
+        """Removes messages that have attachments in them."""
+        await self.do_removal(ctx, search, lambda e: len(e.attachments))
+
+    @staff()
+    @purge.command()
+    async def images(self, ctx:commands.Context, search=1):
+        """Removes messages that have attachments and images in them."""
+        await self.do_removal(ctx, search, lambda e: len(e.attachments) or len(e.embeds))
+
+    @staff()
+    @purge.command(aliases=['member'])
+    async def user(self, ctx:commands.Context, member:discord.Member, search=1):
+        """Removes messages by a certain user."""
+        await self.do_removal(ctx, search, lambda e: e.author == member)
+
+    @staff()
+    @purge.command()
+    async def contains(self, ctx:commands.Context, search=1,*, string:str):
+        """Removes all messages containing a string/substring.
+
+        The provided string should be atleast 3 characters long."""
+        if len(string)>3:
+            return await ctx.send("The provided string should be at least 3 characters long.")
+        await self.do_removal(ctx, search, lambda e: string in e.content)
+
+
+    @staff()
+    @purge.command(name="bot")
+    async def _bot(self, ctx:commands.Context, search=1, prefix=None):
+        """Removes a bot user's messages and messages with their optional prefix"""
+
+        def pred(msg):
+            return (msg.webhook_id is None and msg.author.bot) or (prefix and msg.content.startswith(prefix))
+
+        await self.do_removal(ctx, search, pred)
+
+    @senior_staff()
+    @commands.command()
+    async def kick(self, ctx:commands.Context, offender:discord.Member, *,reason:str):
+        """Kicks a user from the server."""
+
+        if not self.hierarchy_check(ctx.author, offender):
+            return await ctx.send("You cannot perform that action due to the hierarchy.")
+
+        doc = await self.append_infraction(
+            InfractionType.kick,
+            offender,
+            ctx.author,
+            reason
+        )
+
+        await ctx.send("\U0001f44c")
+
+        embed = self.embed_builder(
+            type= InfractionType.kick,
+            title = InfractionType.kick.name,
+            offender = offender,
+            moderator = ctx.author,
+            reason = reason,
+            id = doc['id']
+        )
+
+        await EmbedLog(ctx, embed).post_log()
+
+        user_embed = UserInfractionEmbed(InfractionType.kick, reason, doc['id']).embed()
+        try:
+            await offender.send(embed=user_embed)
+        except:
+            await ctx.send("Couldn't DM the user since their DMs are closed", delete_after=5.0)
+
+        try:
+            await offender.kick(reason=reason+f" Moderator: {ctx.author}")
+        except Exception as e:
+            await ctx.send(e)
+
+    @senior_staff()
+    @commands.command()
+    async def ban(self, ctx:commands.Context, offender:Union[discord.Member, discord.User], *,reason:str):
+        """Bans a user irrespective of them being in the server."""
+        if not self.hierarchy_check(ctx.author, offender):
+            return await ctx.send("You cannot perform that action due to the hierarchy.")
+
+        doc = await self.append_infraction(
+            InfractionType.ban,
+            offender,
+            ctx.author,
+            reason
+        )
+
+        await ctx.send("\U0001f44c")
+
+        embed = self.embed_builder(
+            type= InfractionType.ban,
+            title = InfractionType.ban.name,
+            offender = offender,
+            moderator = ctx.author,
+            reason = reason,
+            id = doc['id']
+        )
+
+        await EmbedLog(ctx, embed).post_log()
+
+        user_embed = UserInfractionEmbed(InfractionType.ban, reason, doc['id']).embed()
+        try:
+            await offender.send(embed=user_embed)
+        except:
+            await ctx.send("Couldn't DM the user since their DMs are closed", delete_after=5.0)
+
+        try:        
+            await ctx.guild.ban(offender, reason=reason+f" Moderator: {ctx.author}", delete_message_days=7)
+        except Exception as e:
+            await ctx.send(e)
+
+    @senior_staff()
+    @commands.command()
+    async def unban(self, ctx:commands.Context, user:discord.User, *, reason:str):
+        """Unbans a user from the server"""
+        doc = await self.append_infraction(
+            InfractionType.unban,
+            user,
+            ctx.author,
+            reason
+        )
+
+        await ctx.send("\U0001f44c")
+
+        embed = self.embed_builder(
+            type= InfractionType.unban,
+            title = InfractionType.unban.name,
+            offender = user,
+            moderator = ctx.author,
+            reason = reason,
+            id = doc['id']
+        )
+
+        await EmbedLog(ctx, embed).post_log()
+
+        await ctx.guild.unban(user, reason=reason+f" Moderator: {ctx.author}")
+
 
 
 def setup(bot):

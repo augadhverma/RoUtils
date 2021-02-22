@@ -155,7 +155,7 @@ class UserInfractionEmbed:
 
     def embed(self) -> discord.Embed:
         embed = discord.Embed(
-            title = f"You have been {self.embed_type}. | Case Id: #{self.id}",
+            title = f"You have been {self.embed_type} in RoWifi HQ. | Case Id: #{self.id}",
             colour = InfractionColour[self.type.name].value,
             description = f"**Reason:** {self.reason}",
             timestamp = datetime.utcnow()

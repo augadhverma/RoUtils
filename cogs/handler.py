@@ -57,12 +57,12 @@ class Handler(commands.Cog):
         if isinstance(error, ignored):
             return
 
-        elif isinstance(error, add_x):
-            await ctx.message.add_reaction("<:x_:811230315648647188>")
-            return
-
         elif isinstance(error, commands.BotMissingPermissions):
             await ctx.send(f"I am missing the following permission(s): {error.missing_perms}")
+            return
+        
+        elif isinstance(error, add_x):
+            await ctx.message.add_reaction("<:x_:811230315648647188>")
             return
 
         elif isinstance(error, commands.BadUnionArgument):
