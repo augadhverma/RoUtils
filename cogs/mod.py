@@ -182,16 +182,65 @@ class Moderation(commands.Cog):
         embed.set_thumbnail(url=offender.avatar_url)
         embed.set_footer(text=self.bot.footer)
         await EmbedLog(ctx, embed).post_log()
+
+    async def removal_log(self, ctx, search):
+        
+        embed = discord.Embed(
+            title = "Purge Command Used",
+            colour = self.bot.colour,
+            timestamp = datetime.utcnow()
+        ).set_thumbnail(url=ctx.author.avatar_url)
+
+        embed.set_footer(text=self.bot.footer)
+        embed.add_field(name="Used By", value=ctx.author.mention)
+        embed.add_field(name="Channel", value=ctx.channel.mention)
+        embed.add_field(name="Messages Purged", value=search)
+
+        await EmbedLog(ctx, embed).post_log()
         
 
+    async def do_removal(self, ctx, limit, predicate):
+        await ctx.message.delete()
+        if limit > 2000:
+            return await ctx.send(f'Too many messages to search given ({limit}/2000)')
+        
+        def check(m):
+            return predicate and not m.pinned
+
+        try:
+            deleted = await ctx.channel.purge(limit=limit, check=check)
+        except discord.Forbidden as e:
+            return await ctx.send('I do not have permissions to delete messages.')
+        except discord.HTTPException as e:
+            return await ctx.send(f'Error: {e} (try a smaller search?)')
+
+        spammers = Counter(m.author for m in deleted)
+        deleted = len(deleted)
+        messages = [f'{deleted} message{" was" if deleted == 1 else "s were"} removed.']
+        if deleted:
+            messages.append('')
+            spammers = sorted(spammers.items(), key=lambda t: t[1], reverse=True)
+            messages.extend(f'**{name}**: {count}' for name, count in spammers)
+
+        to_send = '\n'.join(messages)
+
+        if len(to_send) > 2000:
+            await ctx.send(f'Successfully removed {deleted} messages.', delete_after=5)
+        else:
+            await ctx.send(to_send, delete_after=5)
+
+        await self.removal_log(ctx, limit)
+    
+
+
     @staff()
-    @commands.command(aliases=['m'])
-    async def mute(self, ctx:commands.Context, member:discord.Member, duration:Optional[int], *,reason:str):
-        await ctx.send(f"{member} | {duration} | {reason}")
+    @commands.group(invoke_without_command=True, aliases=['clear'])
+    async def purge(self, ctx:commands.Context, search=1):
+        """Deletes messages."""
+        await self.do_removal(ctx, search, lambda e: True)
+
+    
 
 
-    @commands.command()
-    async def test(self, ctx:commands.Context, time:TimeConverter):
-        await ctx.send(await TimeConverter().convert(ctx, str(time)) - datetime.utcnow())
 def setup(bot):
     bot.add_cog(Moderation(bot))
