@@ -393,6 +393,18 @@ class Moderation(commands.Cog):
 
         await ctx.guild.unban(user, reason=reason+f" Moderator: {ctx.author}")
 
+    @staff()
+    @commands.command()
+    async def nick(self, ctx:commands.Context, user:discord.Member, *, nick:Optional[str]):
+        """Changes the nickname of the user"""
+
+        if not self.hierarchy_check(ctx.author, user):
+            return await ctx.send("You cannot perform that action due to the hierarchy.")
+        try:
+            await user.edit(nick = nick)
+        except Exception as e:
+            return await ctx.send(e)
+        await ctx.send("\U0001f44c")
 
 
 def setup(bot):
