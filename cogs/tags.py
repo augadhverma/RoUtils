@@ -19,6 +19,7 @@ mentions = discord.AllowedMentions(
     roles=False
 )
 
+ADMINS = (449897807936225290, 173977882765426688, 311395138133950465, 604031762359910404, 621777717037105173)
 
 class Tags(commands.Cog):
     def __init__(self, bot:commands.Bot):
@@ -66,7 +67,9 @@ class Tags(commands.Cog):
             if tag['owner'] == user.id:
                 await self.tag_db.delete_one({'name':name})
                 await ctx.send("Successfully deleted the tag \U0001f44c")
-            elif MANAGEMENT in [role.id for role in ctx.author.roles] or COUNCIL in [role.id for role in ctx.author.roles]:
+            elif tag['owner'] in ADMINS:
+                await ctx.send("Can't delete a tag made by an other Admin/Council Member.")
+            elif (MANAGEMENT in [role.id for role in ctx.author.roles] or COUNCIL in [role.id for role in ctx.author.roles]):
                 await self.tag_db.delete_one({'name':name})
                 await ctx.send("Successfully deleted the tag \U0001f44c")
             elif await self.bot.is_owner(ctx.author):
