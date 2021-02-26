@@ -157,7 +157,7 @@ class Information(commands.Cog, description="Info related stuff."):
         )
 
         embed.add_field(
-            name="<:mongo:810927324731539508> Database",
+            name="<:mongo:814706574928379914> Database",
             value=f"`{db_duration:.2f}ms`"
         )
 

@@ -6,8 +6,8 @@ from typing import Optional, Union
 from collections import Counter
 
 from utils.db import Connection
-from utils.checks import staff, senior_staff, council
-from utils.classes import DiscordUser, InfractionType, EmbedLog, InfractionColour, InfractionEmbed, TimeConverter, UserInfractionEmbed
+from utils.checks import staff, senior_staff, council, STAFF, COUNCIL
+from utils.classes import DiscordUser, InfractionType, EmbedLog, InfractionColour, InfractionEmbed, UserInfractionEmbed, UrlDetection
 
 
 class Moderation(commands.Cog):
@@ -25,7 +25,7 @@ class Moderation(commands.Cog):
         user = self.bot.get_user(id)
         if user:
             return user
-        user = self.bot.fetch_user(id)
+        user = await self.bot.fetch_user(id)
         return user
     
     async def get_id(self) -> int:
@@ -80,6 +80,7 @@ class Moderation(commands.Cog):
     @commands.command()
     async def warn(self, ctx:commands.Context, offender:discord.Member, *,reason:commands.clean_content):
         """Warns a user"""
+        await ctx.message.delete()
 
         if not self.hierarchy_check(ctx.author, offender):
             return await ctx.send("You cannot perform that action due to the hierarchy.")
@@ -91,7 +92,7 @@ class Moderation(commands.Cog):
             reason
         )
 
-        await ctx.send("\U0001f44c")
+        await ctx.send(f"Successfully warned **{offender}**. Reason: *{reason}*")
 
         embed = self.embed_builder(
             type= InfractionType.warn,
@@ -118,11 +119,8 @@ class Moderation(commands.Cog):
         if not user:
             description = ""
             infs = self.mod_db.find({})
-            async for inf in infs:
-                if inf['type'] == int(InfractionType.unban):
-                    pass
-                else:
-                    container.append(inf['offender'])
+            async for inf in infs:    
+                container.append(inf['offender'])
             if not container:
                 return await ctx.send("The server is squeaky clean. <:noice:811536531839516674> ")
             embed = discord.Embed(
@@ -138,10 +136,7 @@ class Moderation(commands.Cog):
         elif user:
             infs = self.mod_db.find({"offender":{"$eq":user.id}})
             async for inf in infs:
-                if inf['type'] == int(InfractionType.unban):
-                    pass
-                else:
-                    container.append(inf)
+                container.append(inf)
 
             if not container:
                 return await ctx.send(f"**{user}** is squeaky clean. <:noice:811536531839516674> ")
@@ -152,11 +147,9 @@ class Moderation(commands.Cog):
     @commands.command(aliases=['rw'])
     async def removewarn(self, ctx:commands.Context, id:int, *,reason:str):
         document = await self.delete_infraction(id)
-        if document:
-            await ctx.send("\U0001f44c")
-        else:
-            return await ctx.send("\U0001f44e")
-
+        if not document:
+            return await ctx.send(f"Couldn't find the infraction with id: {id}")
+        
         type = InfractionType(document['type']).name
 
         inf_id = document['id']
@@ -187,6 +180,7 @@ class Moderation(commands.Cog):
         embed.set_thumbnail(url=offender.avatar_url)
         embed.set_footer(text=self.bot.footer)
         await EmbedLog(ctx, embed).post_log()
+        await ctx.send(f"Successfully deleted infraction with id **{id}**. More info about the infraction can be found in the logs.")
 
     async def removal_log(self, ctx, search):
         
@@ -294,7 +288,7 @@ class Moderation(commands.Cog):
     @commands.command()
     async def kick(self, ctx:commands.Context, offender:discord.Member, *,reason:str):
         """Kicks a user from the server."""
-
+        await ctx.message.delete()
         if not self.hierarchy_check(ctx.author, offender):
             return await ctx.send("You cannot perform that action due to the hierarchy.")
 
@@ -305,7 +299,6 @@ class Moderation(commands.Cog):
             reason
         )
 
-        await ctx.send("\U0001f44c")
 
         embed = self.embed_builder(
             type= InfractionType.kick,
@@ -325,6 +318,7 @@ class Moderation(commands.Cog):
             await ctx.send("Couldn't DM the user since their DMs are closed", delete_after=5.0)
 
         try:
+            await ctx.send(f"Successfully kicked **{offender}**. Reason: *{reason}*")
             await offender.kick(reason=reason+f" Moderator: {ctx.author}")
         except Exception as e:
             await ctx.send(e)
@@ -333,8 +327,10 @@ class Moderation(commands.Cog):
     @commands.command()
     async def ban(self, ctx:commands.Context, offender:Union[discord.Member, discord.User], *,reason:str):
         """Bans a user irrespective of them being in the server."""
-        if not self.hierarchy_check(ctx.author, offender):
-            return await ctx.send("You cannot perform that action due to the hierarchy.")
+        await ctx.message.delete()
+        if not isinstance(offender, discord.User):
+            if not self.hierarchy_check(ctx.author, offender):
+                return await ctx.send("You cannot perform that action due to the hierarchy.")
 
         doc = await self.append_infraction(
             InfractionType.ban,
@@ -343,7 +339,6 @@ class Moderation(commands.Cog):
             reason
         )
 
-        await ctx.send("\U0001f44c")
 
         embed = self.embed_builder(
             type= InfractionType.ban,
@@ -364,6 +359,7 @@ class Moderation(commands.Cog):
 
         try:        
             await ctx.guild.ban(offender, reason=reason+f" Moderator: {ctx.author}", delete_message_days=7)
+            await ctx.send(f"Banned **{offender}**.Reason: *{reason}*.")
         except Exception as e:
             await ctx.send(e)
 
@@ -371,6 +367,15 @@ class Moderation(commands.Cog):
     @commands.command()
     async def unban(self, ctx:commands.Context, user:discord.User, *, reason:str):
         """Unbans a user from the server"""
+        try:
+            banned:discord.BanEntry = await ctx.guild.fetch_ban(user)
+        except discord.NotFound:
+            return await ctx.send("The given user is not banned.")
+        except discord.HTTPException as e:
+            return await ctx.send(e)
+            
+        
+
         doc = await self.append_infraction(
             InfractionType.unban,
             user,
@@ -378,7 +383,7 @@ class Moderation(commands.Cog):
             reason
         )
 
-        await ctx.send("\U0001f44c")
+        await ctx.send(f"Succesfully unbanned **{banned.user}**.\nPreviously banned for: *{banned.reason}*.")
 
         embed = self.embed_builder(
             type= InfractionType.unban,
@@ -397,14 +402,100 @@ class Moderation(commands.Cog):
     @commands.command()
     async def nick(self, ctx:commands.Context, user:discord.Member, *, nick:Optional[str]):
         """Changes the nickname of the user"""
-
+        await ctx.message.delete()
+        old = user.display_name
         if not self.hierarchy_check(ctx.author, user):
             return await ctx.send("You cannot perform that action due to the hierarchy.")
         try:
             await user.edit(nick = nick)
         except Exception as e:
             return await ctx.send(e)
-        await ctx.send("\U0001f44c")
+        await ctx.send(f"Changed the nickname from *{old}* to **{user.display_name}**.", delete_after=5.0)
+
+    @senior_staff()
+    @commands.command(aliases=['cw','clearwarn'])
+    async def clearwarns(self, ctx:commands.Context, user:Union[discord.User, discord.Member],*,reason:str):
+        deleted = await self.mod_db.delete_many({"offender":{"$eq":user.id}})
+        count = deleted.deleted_count
+        if count:
+            embed = discord.Embed(
+                title="All Infractions Removed",
+                timestamp = datetime.utcnow(),
+                description = f"Removed {count} infractions from {user.mention}\n`({user} | {user.id})`",
+                colour = 0x101010
+            )
+            embed.set_footer(text=self.bot.footer)
+            embed.set_thumbnail(url=user.avatar_url)
+            embed.add_field(name="Removed by", value=f"{ctx.author.mention} `({ctx.author.id})`")
+            embed.add_field(name="Reason for Removal", value=reason, inline=False)
+
+            await ctx.send(f"Deleted {count} infractions for **{user}**.")
+            await EmbedLog(ctx, embed).post_log()
+        else:
+            await ctx.send("The user doesn't have any infraction registered.")
+
+
+
+
+
+
+
+    async def autowarn(self, offender:discord.Member, reason:str, message:discord.Message):
+            
+        doc = await self.append_infraction(
+            InfractionType.autowarn,
+            offender,
+            self.bot.user,
+            reason
+        )
+
+        embed = self.embed_builder(
+            type = InfractionType.autowarn,
+            title = InfractionType.autowarn.name,
+            offender = offender,
+            moderator = self.bot.user,
+            reason = reason,
+            id = doc['id']
+        )
+
+        await EmbedLog(await self.bot.get_context(message),embed).post_log()
+        user_embed = UserInfractionEmbed(InfractionType.autowarn, reason, doc['id']).embed()
+        try:
+            await offender.send(embed=user_embed)
+        except:
+            pass
+
+        await message.channel.send(f"Warned **{offender}**. Reason: *{reason}*", delete_after=5.0)
+
+
+
+    @commands.Cog.listener()
+    async def on_message(self, message:discord.Message):
+        if not message.guild:
+            return
+        if not str(message.guild.id) in ("702180216533155933", "576325772629901312"):
+            return
+        elif message.author.bot:
+            return
+        elif await self.bot.is_owner(message.author):
+            return
+        elif STAFF in [role.id for role in message.author.roles] or COUNCIL in [role.id for role in message.author.roles]:
+            return
+        else:
+            if not message.channel.id == 707177435912994877 or not message.channel.category_id == 680039943199784960:
+                invite_detected = UrlDetection().invite_check(message.content)
+                if invite_detected:
+                    await message.delete()
+                    await self.autowarn(message.author, "Automatic action carried out for using an invite.", message)
+               
+            has_invalid_link = UrlDetection().convert(message.content)
+            if not has_invalid_link:
+                await message.delete()
+                reason = "Automatic action carried out for using a blacklisted link."
+            
+                await self.autowarn(message.author, reason, message)
+                
+
 
 
 def setup(bot):

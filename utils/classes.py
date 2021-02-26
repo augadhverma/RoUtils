@@ -1,8 +1,9 @@
 import discord
 import re
+import pytimeparse
 
-from typing import Iterable
-from datetime import datetime
+from typing import Iterable, Optional
+from datetime import date, datetime, timedelta
 from discord.ext import menus, commands
 from discord.utils import get
 from enum import Enum
@@ -60,6 +61,7 @@ class InfractionType(Enum):
     kick = 3
     ban = 4
     unban = 5
+    autowarn = 6
 
     def __str__(self) -> str:
         return self.name
@@ -74,6 +76,7 @@ class InfractionColour(Enum):
     kick = discord.Color.red()
     ban = discord.Color.dark_red()
     unban = discord.Color.green()
+    autowarn = discord.Color.teal()
 
 class EmbedInfractionType(Enum):
     warn = "warned"
@@ -82,6 +85,7 @@ class EmbedInfractionType(Enum):
     kick = "kicked"
     ban = "banned"
     unban = "unbanned"
+    autowarn = "warned (auto)"
 
     def __str__(self) -> str:
         return self.value
@@ -91,13 +95,13 @@ class EmbedLog:
         self.ctx = ctx
         self.embed = embed
 
-    async def post_log(self):
-        channel = get(self.ctx.guild.text_channels, name="bot-logs")
+    async def post_log(self, channel:discord.TextChannel=None) -> discord.Message:
+        channel = channel or get(self.ctx.guild.text_channels, name="bot-logs")
         if channel:
             try:
                 return await channel.send(embed=self.embed)
             except:
-                return
+                pass
 
 class InfractionEntry:
     __slots__ = ("time", "reason","type","id")
@@ -170,39 +174,37 @@ class UserInfractionEmbed:
 
         return embed
 
-class TimeConverter(commands.Converter):
-    def __init__(self):
-        pass
-    async def convert(self, ctx:commands.Context, argument:str) -> datetime:
-        regex = re.compile(r"(\d{1,5}(?:[.,]?\d{1,5})?)([mh])")
-        hours = 0
-        minutes = 0
-
-        matches = regex.findall(argument.lower())
-        print(matches)
-        for duration, time in matches:
-            print(duration, time)
-            if time == "h":
-                print(time)
-                hours+=int(duration)
-                print(hours)
-            if time == "m":
-                print(time)
-                minutes+=int(minutes)
-                print(minutes)
-
-        print(hours, minutes)
-        
-        
-
-        now = datetime.utcnow()
-        return datetime(
-            now.year,
-            now.month,
-            now.day,
-            now.hour + hours,
-            now.minute + minutes,
-            now.second,
-            now.microsecond,
-            now.tzinfo
+class UrlDetection:
+    def convert(self, argument:str) -> bool:
+        to_pass = (
+            "https://rowifi.link",
+            "https://patreon.com/rowifi",
+            "https://tenor.com",
+            "https://gyazo.com",
+            "https://imgur.com",
         )
+        found = []
+        passed = []
+        pattern = re.compile(
+            r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
+            )
+        matches = pattern.findall(argument.lower())
+        for match in matches:
+            found.append(match)
+            for a in to_pass:
+                if a.replace("www.","") in match:
+                    passed.append(a)
+
+        if len(passed) == len(found):
+            return True
+        else:
+            return False
+
+    def invite_check(self, argument:str) -> bool:
+        pattern = re.compile(r"(?:https?://)?discord(?:app)?\.(?:com/invite|gg)/[a-zA-Z0-9]+/?")
+        matches = pattern.findall(argument.lower())
+
+        if matches:
+            return True
+        else:
+            return False
