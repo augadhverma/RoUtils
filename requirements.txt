@@ -4,3 +4,4 @@ dnspython
 jishaku
 motor==2.3.0
 pymongo
+pytimeparse

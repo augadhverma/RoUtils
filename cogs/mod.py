@@ -6,7 +6,7 @@ from typing import Optional, Union
 from collections import Counter
 
 from utils.db import Connection
-from utils.checks import staff, senior_staff, council, STAFF, COUNCIL
+from utils.checks import bot_channel, staff, senior_staff, council, STAFF, COUNCIL
 from utils.classes import DiscordUser, InfractionType, EmbedLog, InfractionColour, InfractionEmbed, UserInfractionEmbed, UrlDetection
 
 
@@ -411,6 +411,25 @@ class Moderation(commands.Cog):
         except Exception as e:
             return await ctx.send(e)
         await ctx.send(f"Changed the nickname from *{old}* to **{user.display_name}**.", delete_after=5.0)
+
+    @bot_channel()
+    @commands.command()
+    async def mywarns(self, ctx:commands.Context):
+        container = []
+        infs = self.mod_db.find({"offender":{"$eq":ctx.author.id}})
+        async for inf in infs:
+            if inf['type'] == int(InfractionType.unban):
+                pass
+            else:
+                container.append(inf)
+
+        if not container:
+            return await ctx.send(f"You are squeaky clean. <:noice:811536531839516674> ")
+        
+        embed = await InfractionEmbed(ctx, container).embed_builder()
+        await ctx.send(content="Sending you a list of your infractions.")
+        return await ctx.author.send(embed=embed)
+
 
     @senior_staff()
     @commands.command(aliases=['cw','clearwarn'])

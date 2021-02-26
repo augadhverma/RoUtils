@@ -13,6 +13,8 @@ class ModEvents(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message_delete(self, message:discord.Message):
+        if not message.guild:
+            return
         if message.author.bot:
             return
         embed = discord.Embed(
@@ -53,6 +55,10 @@ class ModEvents(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message_edit(self, before:discord.Message, after:discord.Message):
+        if not before.guild:
+            return
+        if before.content == after.content:
+            return
         embed = discord.Embed(
             title = "Message Edited",
             colour = discord.Color.blue(),
@@ -77,7 +83,15 @@ class ModEvents(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member:discord.Member):
-        pass
+        embed = discord.Embed(
+            title="Member Joined",
+            colour = discord.Colour.green(),
+            timestamp = datetime.utcnow()
+        )
+        embed.set_author(name=str(member), icon_url=member.avatar_url)
+        embed.set_footer(text=f"ID: {member.id}")
+        embed.description = f""
+
 
 def setup(bot:commands.Bot):
     bot.add_cog(ModEvents(bot))
