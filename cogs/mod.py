@@ -112,7 +112,7 @@ class Moderation(commands.Cog):
             await ctx.send("Couldn't DM the user since their DMs are closed", delete_after=5.0)
 
     @staff()
-    @commands.command()
+    @commands.group(invoke_without_command=True)
     async def warns(self, ctx:commands.Context, user:Optional[discord.User]):
         """Shows warns of a user or everyone"""
         container = []
@@ -142,6 +142,37 @@ class Moderation(commands.Cog):
                 return await ctx.send(f"**{user}** is squeaky clean. <:noice:811536531839516674> ")
             embed = await InfractionEmbed(ctx, container).embed_builder()
             return await ctx.send(embed=embed)
+
+    @warns.command()
+    @staff()
+    async def by(self, ctx:commands.Context, moderator:Optional[discord.User]):
+        """Shows warns made by a moderator"""
+        container = []
+        if moderator:
+            infs = self.mod_db.find({"moderator":{"$eq":moderator.id}})
+            async for inf in infs:
+                container.append(inf)
+            if not container:
+                return await ctx.send(f"**{moderator}** hasn't made any infractions.")
+            embed = await InfractionEmbed(ctx, container).embed_builder()
+            return await ctx.send(embed=embed)
+
+        else:
+            description = ""
+            infs = self.mod_db.find({})
+            async for inf in infs:
+                container.append(inf['moderator'])
+            if not container:
+                return await ctx.send("No infractions has been made by anyone.")
+            embed = discord.Embed(
+                colour = discord.Colour.blurple(),
+                title = f"This server has {len(container)} infractions."
+            )
+            for mod, infractions in Counter(container).items():
+                description+=f"{(await self.get_or_fetch_user(mod)).mention} has made **{infractions}** infraction(s).\n"
+            embed.description = description
+            await ctx.send(embed=embed)
+
 
     @staff()
     @commands.command(aliases=['rw'])
