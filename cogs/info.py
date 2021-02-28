@@ -2,7 +2,7 @@ import discord
 import time
 import platform
 
-from typing import Union
+from typing import Optional, Union
 from discord.ext import commands
 from datetime import datetime
 
@@ -204,6 +204,32 @@ class Information(commands.Cog, description="Info related stuff."):
         )
 
         await ctx.send(embed=embed)
+
+    @commands.command()
+    @bot_channel()
+    async def spotify(self, ctx:commands.Context, user:Optional[discord.Member]):
+        """Shows the spotify status of a user"""
+        user = user or  ctx.author
+        if user.activity is None:
+            return await ctx.send(f"**{user}** is not listening to spotify currently.")
+        if isinstance(user.activities[0], discord.activity.Spotify):
+            activity:discord.Spotify = user.activities[0]
+            embed = discord.Embed(
+                title = activity.title,
+                colour = activity.colour,
+                timestamp = activity.start,
+                url = f"https://open.spotify.com/track/{activity.track_id}"
+            )
+            embed.set_footer(text=f"Started listening at")
+            embed.set_thumbnail(url=activity.album_cover_url)
+            if len(activity.artists) > 1:
+                artists = ", ".join([a for a in activity.artists])
+            else:
+                artists = activity.artist
+            embed.description = f"**Artists:** {artists}\n**Album:** {activity.album}\n**Duration:** {str(activity.duration)[2:-7]}"
+            await ctx.send(embed=embed)
+        else:
+            return await ctx.send(f"**{user}** is not listening to spotify currently.")
 
 def setup(bot:commands.Bot):
     bot.add_cog(Information(bot))

@@ -4,6 +4,7 @@ import discord
 from typing import Optional, Union
 from datetime import datetime
 from collections import Counter
+from difflib import get_close_matches
 
 from discord.ext import commands, menus
 from discord.utils import escape_markdown
@@ -89,7 +90,15 @@ class Tags(commands.Cog):
         if tag:
             await ctx.send(content=tag, allowed_mentions=mentions, reference=self.replied_reference(ctx.message))
         else:
-            await ctx.send(f"Tag **{name}** not found.")
+            container = []
+            tags = self.tag_db.find({})
+            async for t in tags:
+                container.append(t['name'])
+            matches = get_close_matches(name, container)
+            if matches:
+                await ctx.send("Tag not found. Did you mean...\n{}".format('\n'.join(a for a in matches)))
+            else:
+                await ctx.send("Tag not found.")
 
     @staff()
     @tag.command(aliases=['add','+', 'new'])

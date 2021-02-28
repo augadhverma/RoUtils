@@ -6,6 +6,19 @@ from discord.utils import get
 from utils.classes import EmbedLog
 from datetime import datetime
 
+BOT_COMMANDS = (
+    "!verify",
+    "!update",
+    "!getroles",
+    "!reverify",
+    "!premium",
+    "!help",
+    "t!rank",
+    "t!help",
+    "?help",
+    "?rank",
+    "?suggest"
+)
 
 class MemberLogs:
     def __init__(self, embed:discord.Embed, iterable:Iterable) -> None:
@@ -106,8 +119,29 @@ class ModEvents(commands.Cog):
         embed.description = description
         await MemberLogs(embed, member.guild.text_channels).post_log()
 
+    async def kicked_event(self, member:discord.Member, entry:discord.AuditLogEntry) -> Optional[discord.Message]:
+        embed = discord.Embed(
+            title = "Member Kicked",
+            colour = discord.Colour.red(),
+            timestamp = datetime.utcnow()
+        )
+
+        embed.set_thumbnail(url=member.avatar_url)
+        embed.set_footer(text=self.bot.footer)
+        embed.description=f"**Offender:** {entry.target.mention} `({entry.target.id})`\n**Reason:** {entry.reason}\n**Moderator:** {entry.user.mention} `({entry.user.id})`"
+
+        return await MemberLogs(embed, member.guild.text_channels).post_log()
+
     @commands.Cog.listener()
     async def on_member_remove(self, member:discord.Member):
+        async for entry in member.guild.audit_logs(action=discord.AuditLogAction.kick, limit=1):
+            entry:discord.AuditLogEntry = entry
+            if entry.target.id == member.id:
+                if entry.user.id == self.bot.user.id:
+                    break
+                else:
+                    await self.kicked_event(member, entry)
+                
         embed = discord.Embed(
             title = "Member Left",
             colour = discord.Color.red(),
@@ -118,10 +152,12 @@ class ModEvents(commands.Cog):
         embed.set_footer(text=f"ID: {member.id}")
         embed.description = f"{member.mention} {datetime.strftime(member.joined_at, 'joined us on %A %d, %B of %Y at %H:%M %p')}\n*New server member count: {member.guild.member_count}*"
 
+        roles = member.roles
+        roles.remove(member.guild.default_role)
         if member.roles:
             embed.add_field(
                 name = "Roles",
-                value = [role.mention for role in member.roles]
+                value = ", ".join([role.mention for role in roles])
             )
         await MemberLogs(embed, member.guild.text_channels).post_log()
 
@@ -203,6 +239,16 @@ class ModEvents(commands.Cog):
                 embed.add_field(name="Roles Removed", value=", ".join([r.mention for r in removed]), inline=False)
 
             await MemberLogs(embed, after.guild.text_channels).post_log()
+
+    @commands.Cog.listener()
+    async def on_message(self, message:discord.Message):
+        if str(message.channel.id) not in ("671616323696197647","706012467444056125"):
+            return
+        cmds = self.bot.commands
+        content:str = message.content.lower()
+        if content.startswith(BOT_COMMANDS):
+            return await message.channel.send(f"{message.author.mention} Whoops! Make sure you use bot commands in <#678198477108543518>, they will not work here.", delete_after=5.0)
+
 
 def setup(bot:commands.Bot):
     bot.add_cog(ModEvents(bot))
