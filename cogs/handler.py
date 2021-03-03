@@ -1,4 +1,3 @@
-from inspect import isbuiltin
 import aiohttp
 import traceback
 import discord
@@ -6,6 +5,7 @@ import discord
 from discord.ext import commands
 from datetime import datetime
 
+from .info import RobloxUserNotFound
 
 class Handler(commands.Cog):
     def __init__(self, bot:commands.Bot):
@@ -72,6 +72,12 @@ class Handler(commands.Cog):
 
         elif isinstance(error, (commands.MemberNotFound, commands.UserNotFound)):
             return await ctx.send(f'User "{error.argument}" not found')
+        
+        elif isinstance(error, commands.CommandInvokeError):
+            if isinstance(error.__cause__, RobloxUserNotFound):
+                return await ctx.send(error.original)
+            else:
+                return
 
         elif isinstance(error, private):
             await ctx.send(error.message)

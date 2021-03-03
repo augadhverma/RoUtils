@@ -56,7 +56,7 @@ class ModEvents(commands.Cog):
         embed.set_footer(text="Deleted At")
         embed.set_author(name=str(message.author), icon_url=message.author.avatar_url)
 
-        await EmbedLog(await self.bot.get_context(message), embed).post_log()
+        await MemberLogs(embed, message.guild.text_channels).post_log()
 
     @commands.Cog.listener()
     async def on_bulk_message_delete(self, messages:list):
@@ -77,7 +77,8 @@ class ModEvents(commands.Cog):
         )
         embed.set_footer(text=f"{len(deleted)} messages shown")
 
-        await EmbedLog(await self.bot.get_context(sample), embed).post_log()
+        await MemberLogs(embed, sample.guild.text_channels).post_log()
+
 
     @commands.Cog.listener()
     async def on_message_edit(self, before:discord.Message, after:discord.Message):
@@ -104,7 +105,9 @@ class ModEvents(commands.Cog):
         )
         embed.set_author(name=str(after.author),icon_url=after.author.avatar_url)
 
-        await EmbedLog(await self.bot.get_context(before), embed).post_log()
+        await MemberLogs(embed, after.guild.text_channels).post_log()
+
+
 
     @commands.Cog.listener()
     async def on_member_join(self, member:discord.Member):
@@ -141,25 +144,25 @@ class ModEvents(commands.Cog):
                     break
                 else:
                     await self.kicked_event(member, entry)
-                
-        embed = discord.Embed(
-            title = "Member Left",
-            colour = discord.Color.red(),
-            timestamp = datetime.utcnow()
-        )
-
-        embed.set_author(name=str(member), icon_url=member.avatar_url, url=member.avatar_url)
-        embed.set_footer(text=f"ID: {member.id}")
-        embed.description = f"{member.mention} {datetime.strftime(member.joined_at, 'joined us on %A %d, %B of %Y at %H:%M %p')}\n*New server member count: {member.guild.member_count}*"
-
-        roles = member.roles
-        roles.remove(member.guild.default_role)
-        if member.roles:
-            embed.add_field(
-                name = "Roles",
-                value = ", ".join([role.mention for role in roles])
+        else:
+            embed = discord.Embed(
+                title = "Member Left",
+                colour = discord.Color.red(),
+                timestamp = datetime.utcnow()
             )
-        await MemberLogs(embed, member.guild.text_channels).post_log()
+
+            embed.set_author(name=str(member), icon_url=member.avatar_url, url=member.avatar_url)
+            embed.set_footer(text=f"ID: {member.id}")
+            embed.description = f"{member.mention} {datetime.strftime(member.joined_at, 'joined us on %A %d, %B of %Y at %H:%M %p')}\n*New server member count: {member.guild.member_count}*"
+
+            roles = member.roles
+            roles.remove(member.guild.default_role)
+            if member.roles:
+                embed.add_field(
+                    name = "Roles",
+                    value = ", ".join([role.mention for role in roles])
+                )
+            await MemberLogs(embed, member.guild.text_channels).post_log()
 
     @commands.Cog.listener()
     async def on_member_ban(self, guild:discord.Guild, user:Union[discord.User, discord.Member]):
