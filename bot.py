@@ -3,8 +3,10 @@ import discord
 from discord.ext import commands
 
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
-TOKEN = "Nzk2MDU0MDg5MDgzNTE4OTk2.X_SVJA.TMpLMMUCwWO-A2fbt9GisAX4WbM"
+TOKEN = os.getenv("BOT_TOKEN")
 
 # ----- some useful vars -----
 
