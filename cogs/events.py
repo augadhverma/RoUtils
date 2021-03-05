@@ -247,10 +247,10 @@ class ModEvents(commands.Cog):
     async def on_message(self, message:discord.Message):
         if str(message.channel.id) not in ("671616323696197647","706012467444056125"):
             return
-        cmds = self.bot.commands
         content:str = message.content.lower()
         if content.startswith(BOT_COMMANDS):
-            return await message.channel.send(f"{message.author.mention} Whoops! Make sure you use bot commands in <#678198477108543518>, they will not work here.", delete_after=5.0)
+            await message.delete()
+            return await message.channel.send(f"{message.author.mention} Whoops! Make sure you use bot commands in <#678198477108543518>, they will not work here.", delete_after=10.0)
 
 
 def setup(bot:commands.Bot):
