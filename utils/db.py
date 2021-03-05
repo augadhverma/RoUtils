@@ -3,13 +3,15 @@ from motor import motor_asyncio as ma
 
 from pymongo.results import DeleteResult, InsertManyResult, InsertOneResult, UpdateResult
 
+import os
 
 
-pwd = "HasAccessToAllDatabases"
+part1 = os.getenv("DB_TOKEN_1")
+part2 = os.getenv("DB_TOKEN_2")
 
 class Connection:
     def __init__(self, db, collection) -> None:
-        client = ma.AsyncIOMotorClient(f"mongodb+srv://Admin:{pwd}@cluster0.ulwxb.mongodb.net/{db}?retryWrites=true&w=majority")
+        client = ma.AsyncIOMotorClient(f"{part1}{db}{part2}")
         self.db = client[db]
         self.collection = self.db[collection]
 

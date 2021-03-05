@@ -137,6 +137,25 @@ class ModEvents(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_remove(self, member:discord.Member):
+        embed = discord.Embed(
+            title = "Member Left",
+            colour = discord.Color.red(),
+            timestamp = datetime.utcnow()
+        )
+
+        embed.set_author(name=str(member), icon_url=member.avatar_url, url=member.avatar_url)
+        embed.set_footer(text=f"ID: {member.id}")
+        embed.description = f"{member.mention} {datetime.strftime(member.joined_at, 'joined us on %A %d, %B of %Y at %H:%M %p')}\n*New server member count: {member.guild.member_count}*"
+
+        roles = member.roles
+        roles.remove(member.guild.default_role)
+        if member.roles:
+            embed.add_field(
+                name = "Roles",
+                value = ", ".join([role.mention for role in roles])
+            )
+        await MemberLogs(embed, member.guild.text_channels).post_log()
+
         async for entry in member.guild.audit_logs(action=discord.AuditLogAction.kick, limit=1):
             entry:discord.AuditLogEntry = entry
             if entry.target.id == member.id:
@@ -144,26 +163,6 @@ class ModEvents(commands.Cog):
                     break
                 else:
                     await self.kicked_event(member, entry)
-        else:
-            embed = discord.Embed(
-                title = "Member Left",
-                colour = discord.Color.red(),
-                timestamp = datetime.utcnow()
-            )
-
-            embed.set_author(name=str(member), icon_url=member.avatar_url, url=member.avatar_url)
-            embed.set_footer(text=f"ID: {member.id}")
-            embed.description = f"{member.mention} {datetime.strftime(member.joined_at, 'joined us on %A %d, %B of %Y at %H:%M %p')}\n*New server member count: {member.guild.member_count}*"
-
-            roles = member.roles
-            roles.remove(member.guild.default_role)
-            if member.roles:
-                embed.add_field(
-                    name = "Roles",
-                    value = ", ".join([role.mention for role in roles])
-                )
-            await MemberLogs(embed, member.guild.text_channels).post_log()
-
     @commands.Cog.listener()
     async def on_member_ban(self, guild:discord.Guild, user:Union[discord.User, discord.Member]):
         async for entry in guild.audit_logs(action=discord.AuditLogAction.ban):
