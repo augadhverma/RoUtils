@@ -7,7 +7,7 @@ from collections import Counter
 
 from utils.db import Connection
 from utils.checks import bot_channel, staff, senior_staff, council, STAFF, COUNCIL
-from utils.classes import DiscordUser, InfractionType, EmbedLog, InfractionColour, InfractionEmbed, UserInfractionEmbed, UrlDetection
+from utils.classes import DMInfractionEmbed, DiscordUser, InfractionType, EmbedLog, InfractionColour, InfractionEmbed, UserInfractionEmbed, UrlDetection
 
 
 class Moderation(commands.Cog):
@@ -457,7 +457,7 @@ class Moderation(commands.Cog):
         if not container:
             return await ctx.send(f"You are squeaky clean. <:noice:811536531839516674> ")
         
-        embed = await InfractionEmbed(ctx, container).embed_builder()
+        embed = await DMInfractionEmbed(ctx, container).embed_builder()
         await ctx.send(content="Sending you a list of your infractions.")
         return await ctx.author.send(embed=embed)
 

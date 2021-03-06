@@ -149,6 +149,28 @@ class InfractionEmbed:
 
         return embed
 
+class DMInfractionEmbed(InfractionEmbed):
+    def __init__(self, ctx, entries: Iterable):
+        super().__init__(ctx, entries)
+
+    async def embed_builder(self) -> discord.Embed:
+        embed = discord.Embed(
+            colour = discord.Color.blurple(),
+            title = f"{len(self.entries)} Infractions Found"
+        )
+        for entry in self.entries:
+            try:
+                embed.add_field(
+                    name = f"#{entry['id']} | {InfractionType(entry['type']).name} | {datetime.strftime(entry['added'],'%Y-%m-%d')}",
+                    value = f"**Reason:** {entry['reason']}"
+                )
+            except:
+                pass
+
+        if len(self.entries) > 24:
+            embed.description = f"Displaying {24}/{len(self.entries)} infractions."
+
+        return embed
 
 class UserInfractionEmbed:
     def __init__(self, type:InfractionType, reason:str, id:int):
