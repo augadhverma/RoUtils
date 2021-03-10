@@ -73,7 +73,7 @@ class Customer(commands.Cog):
         return False
 
 
-    @commands.group(invoke_without_command=True)
+    @commands.group(invoke_without_command=True, hidden=True)
     @bot_channel()
     async def update(self, ctx:commands.Context, member:discord.Member=None):
         user = member or ctx.author

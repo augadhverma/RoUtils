@@ -1,11 +1,26 @@
+from typing import Iterable, Optional
 import aiohttp
 import traceback
 import discord
 
 from discord.ext import commands
+from discord.utils import get
 from datetime import datetime
 
 from .info import RobloxUserNotFound
+
+class Logging:
+    def __init__(self, embed:discord.Embed, iterable:Iterable) -> None:
+        self.embed = embed
+        self.iterable = iterable
+
+    async def post_log(self, channel:discord.TextChannel=None) -> Optional[discord.Message]:
+        channel = channel or get(self.iterable, name="bot-logs")
+        if channel:
+            try:
+                return await channel.send(embed=self.embed)
+            except:
+                pass
 
 class Handler(commands.Cog):
     def __init__(self, bot:commands.Bot):
@@ -89,6 +104,7 @@ class Handler(commands.Cog):
 
         else:
             tb ="".join(traceback.format_exception(type(error), error, error.__traceback__))
+            await ctx.message.add_reaction("\U0000203c")
             try:
                 embed = discord.Embed(
                     description = f"```py\n{tb}```",
@@ -98,7 +114,7 @@ class Handler(commands.Cog):
                 )
                 embed.set_footer(text=f"Caused by command: {ctx.command}")
 
-                await ctx.send(embed=embed)
+                await Logging(embed, ctx.guild.text_channels).post_log()
             except:
                 err = await self.mystbin(tb)
                 embed = discord.Embed(
@@ -109,7 +125,7 @@ class Handler(commands.Cog):
                     url=err
                 )
                 embed.set_footer(text=f"Caused by command: {ctx.command}")
-                await ctx.send(embed=embed)
+                await Logging(embed, ctx.guild.text_channels).post_log()
             raise error
 
 

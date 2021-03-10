@@ -30,10 +30,27 @@ class Information(commands.Cog, description="Info related stuff."):
         self.tag_db = Connection("Utilities","Tags")
 
 
-    @commands.command(aliases=['ui'])
+    @commands.command(aliases=['ui', 'whois'])
     @bot_channel()
     async def userinfo(self, ctx:commands.Context, *, user:Union[discord.Member, discord.User]=None):
         """Shows discord related info about a user."""
+        emojis = {
+            "partner":"<:rowifipartners:768616388276912138>",
+            "staff":"<:staff:768113190462291988>",
+            "council":"<:rowificouncil:768616492363022366>",
+            "alpha":"<:rowifialphatier:768616726891855943>",
+            "beta":"<:rowifibetatier:768616655009611796>"
+        }
+
+        roles = {
+            "alpha":680859671560585358,
+            "beta":628148318014406657,
+            "partner":625384618622976001,
+            "staff":652203841978236940,
+            "council":626860276045840385,
+            "management":671634821323423754
+        }
+
         user = user or ctx.author
 
         is_bot = ""
@@ -68,13 +85,26 @@ class Information(commands.Cog, description="Info related stuff."):
                 value=' '.join([r.mention for r in user.roles if r != ctx.guild.default_role] or ['None']),
                 inline=False
             )
+            tags = ""
+            for role in user.roles:
+                for k,v in roles.items():
+                    if role.id == v:
+                        if k == "management":
+                            k = "council"
+                        tags+=f"{emojis[k]} "
+
+            if tags:
+                embed.add_field(name="Tags", value=tags, inline=False)
+
+
         elif isinstance(user, discord.User):
             embed.description = "*This member is not in this server*"
+
 
         await ctx.send(embed=embed)
 
 
-    @commands.command(aliases=['ri'])
+    @commands.command(aliases=['ri', 'rwhois'])
     @bot_channel()
     async def robloxinfo(self, ctx:commands.Context, user:Union[discord.User, discord.Member]=None):
         """Gets roblox related info of a user. Needs to be verified with RoWifi."""
@@ -212,22 +242,23 @@ class Information(commands.Cog, description="Info related stuff."):
         user = user or  ctx.author
         if user.activity is None:
             return await ctx.send(f"**{user}** is not listening to spotify currently.")
-        if isinstance(user.activities[0], discord.activity.Spotify):
-            activity:discord.Spotify = user.activities[0]
-            embed = discord.Embed(
-                title = activity.title,
-                colour = activity.colour,
-                timestamp = activity.start,
-                url = f"https://open.spotify.com/track/{activity.track_id}"
-            )
-            embed.set_footer(text=f"Started listening at")
-            embed.set_thumbnail(url=activity.album_cover_url)
-            if len(activity.artists) > 1:
-                artists = ", ".join([a for a in activity.artists])
-            else:
-                artists = activity.artist
-            embed.description = f"**Artists:** {artists}\n**Album:** {activity.album}\n**Duration:** {str(activity.duration)[2:-7]}"
-            await ctx.send(embed=embed)
+        for activity in user.activities:
+            if isinstance(activity, discord.Spotify):
+                activity:discord.Spotify = activity
+                embed = discord.Embed(
+                    title = activity.title,
+                    colour = activity.colour,
+                    timestamp = activity.start,
+                    url = f"https://open.spotify.com/track/{activity.track_id}"
+                )
+                embed.set_footer(text=f"Started listening at")
+                embed.set_thumbnail(url=activity.album_cover_url)
+                if len(activity.artists) > 1:
+                    artists = ", ".join([a for a in activity.artists])
+                else:
+                    artists = activity.artist
+                embed.description = f"**Artists:** {artists}\n**Album:** {activity.album}\n**Duration:** {str(activity.duration)[2:-7]}"
+                return await ctx.send(embed=embed)
         else:
             return await ctx.send(f"**{user}** is not listening to spotify currently.")
 
