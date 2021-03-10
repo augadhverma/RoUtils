@@ -149,7 +149,7 @@ class ModEvents(commands.Cog):
 
         roles = member.roles
         roles.remove(member.guild.default_role)
-        if member.roles:
+        if roles:
             embed.add_field(
                 name = "Roles",
                 value = ", ".join([role.mention for role in roles])
