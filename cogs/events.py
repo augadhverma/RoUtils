@@ -44,9 +44,9 @@ class ModEvents(commands.Cog):
         if message.author.bot:
             return
         embed = discord.Embed(
-            title = "Message Deleted",
+            title = f"Message Deleted in #{message.channel}",
             timestamp = datetime.utcnow(),
-            description = f"Deleted in {message.channel.mention}",
+            description = f"Channel: {message.channel.mention}",
             colour = discord.Colour.red()
         )
         embed.add_field(
@@ -87,10 +87,10 @@ class ModEvents(commands.Cog):
         if before.content == after.content:
             return
         embed = discord.Embed(
-            title = "Message Edited",
+            title = f"Message Edited in #{after.channel}",
             colour = discord.Color.blue(),
             timestamp = datetime.utcnow(),
-            description = f"Edited in {after.channel.mention} | [Message]({after.jump_url})"
+            description = f"Channel: {after.channel.mention} | [Message]({after.jump_url})"
         )
         embed.set_footer(text="Modified At")
         embed.add_field(

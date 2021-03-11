@@ -116,7 +116,21 @@ class Customer(commands.Cog):
 
     def cog_unload(self):
         self.update_everyone.cancel()
+
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member:discord.Member):
+        user = member
+        roblox_id = await self.get_roblox_id(user)
+        if roblox_id:
+            a = await self.is_in_group(roblox_id)
+            if a:
+                await self.add_role(user, guild_id=RoWifiHQ, role_id=CustomerRole)
+            else:
+                await self.remove_role(user, guild_id=RoWifiHQ, role_id=CustomerRole)
             
+        else:
+            pass            
 
 def setup(bot:commands.Bot):
     bot.add_cog(Customer(bot))
