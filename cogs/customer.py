@@ -125,12 +125,9 @@ class Customer(commands.Cog):
         if roblox_id:
             a = await self.is_in_group(roblox_id)
             if a:
-                await self.add_role(user, guild_id=RoWifiHQ, role_id=CustomerRole)
-            else:
-                await self.remove_role(user, guild_id=RoWifiHQ, role_id=CustomerRole)
-            
+                await self.add_role(user, guild_id=RoWifiHQ, role_id=CustomerRole)            
         else:
-            pass            
+            pass
 
 def setup(bot:commands.Bot):
     bot.add_cog(Customer(bot))

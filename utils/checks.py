@@ -18,8 +18,10 @@ def council():
     return commands.check(pred)
 
 def senior_staff():
-    def pred(ctx:commands.Context):
-        if council():
+    async def pred(ctx:commands.Context):
+        if await ctx.bot.is_owner(ctx.author):
+            return True
+        elif MANAGEMENT in [role.id for role in ctx.author.roles] or COUNCIL in [role.id for role in ctx.author.roles]:
             return True
         elif SENIORSTAFF in [role.id for role in ctx.author.roles]:
             return True
@@ -28,8 +30,12 @@ def senior_staff():
     return commands.check(pred)
 
 def staff():
-    def pred(ctx:commands.Context):
-        if senior_staff():
+    async def pred(ctx:commands.Context):
+        if await ctx.bot.is_owner(ctx.author):
+            return True
+        elif MANAGEMENT in [role.id for role in ctx.author.roles] or COUNCIL in [role.id for role in ctx.author.roles]:
+            return True
+        elif SENIORSTAFF in [role.id for role in ctx.author.roles]:
             return True
         elif STAFF in [role.id for role in ctx.author.roles]:
             return True
@@ -38,8 +44,14 @@ def staff():
     return commands.check(pred)
 
 def bot_channel():
-    def pred(ctx:commands.Context):
-        if staff():
+    async def pred(ctx:commands.Context):
+        if await ctx.bot.is_owner(ctx.author):
+            return True
+        elif MANAGEMENT in [role.id for role in ctx.author.roles] or COUNCIL in [role.id for role in ctx.author.roles]:
+            return True
+        elif SENIORSTAFF in [role.id for role in ctx.author.roles]:
+            return True
+        elif STAFF in [role.id for role in ctx.author.roles]:
             return True
         elif ctx.guild is None:
             return True
