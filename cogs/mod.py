@@ -1,13 +1,13 @@
 import discord
 
-from discord.ext import commands
+from discord.ext import commands, menus
 from datetime import datetime
 from typing import Optional, Union
 from collections import Counter
 
 from utils.db import Connection
 from utils.checks import bot_channel, staff, senior_staff, council, STAFF, COUNCIL
-from utils.classes import DMInfractionEmbed, DiscordUser, InfractionType, EmbedLog, InfractionColour, InfractionEmbed, UserInfractionEmbed, UrlDetection
+from utils.classes import BanList, DMInfractionEmbed, DiscordUser, InfractionType, EmbedLog, InfractionColour, InfractionEmbed, UserInfractionEmbed, UrlDetection
 
 
 class Moderation(commands.Cog):
@@ -168,6 +168,7 @@ class Moderation(commands.Cog):
                 colour = discord.Colour.blurple(),
                 title = f"This server has {len(container)} infractions."
             )
+            embed.set_footer(text=f"Run {ctx.prefix}warns by <user> for infractions given by a particular moderator.")
             for mod, infractions in Counter(container).items():
                 description+=f"{(await self.get_or_fetch_user(mod)).mention} has made **{infractions}** infraction(s).\n"
             embed.description = description
@@ -485,7 +486,12 @@ class Moderation(commands.Cog):
             await ctx.send("The user doesn't have any infraction registered.")
 
 
-
+    @staff()
+    @commands.command(name="bans")
+    async def guild_bans(self, ctx:commands.Context):
+        bans:list = await ctx.guild.bans()
+        menu = menus.MenuPages(source=BanList(entries=bans, per_page=9))
+        await menu.start(ctx)
 
 
 
@@ -519,31 +525,31 @@ class Moderation(commands.Cog):
 
 
 
-    @commands.Cog.listener()
-    async def on_message(self, message:discord.Message):
-        if not message.guild:
-            return
-        if not str(message.guild.id) in ("702180216533155933", "576325772629901312"):
-            return
-        elif message.author.bot:
-            return
-        elif await self.bot.is_owner(message.author):
-            return
-        elif STAFF in [role.id for role in message.author.roles] or COUNCIL in [role.id for role in message.author.roles]:
-            return
-        else:
-            if not message.channel.id == 707177435912994877 or not message.channel.category_id == 680039943199784960:
-                invite_detected = UrlDetection().invite_check(message.content)
-                if invite_detected:
-                    await message.delete()
-                    await self.autowarn(message.author, "Automatic action carried out for using an invite.", message)
+    # @commands.Cog.listener()
+    # async def on_message(self, message:discord.Message):
+    #     if not message.guild:
+    #         return
+    #     if not str(message.guild.id) in ("702180216533155933", "576325772629901312"):
+    #         return
+    #     elif message.author.bot:
+    #         return
+    #     elif await self.bot.is_owner(message.author):
+    #         return
+    #     elif STAFF in [role.id for role in message.author.roles] or COUNCIL in [role.id for role in message.author.roles]:
+    #         return
+    #     else:
+    #         if not message.channel.id == 707177435912994877 or not str(message.channel.category_id) in ("680039943199784960", "706010454010363924"):
+    #             invite_detected = UrlDetection().invite_check(message.content)
+    #             if invite_detected:
+    #                 await message.delete()
+    #                 await self.autowarn(message.author, "Automatic action carried out for using an invite.", message)
                
-            has_invalid_link = UrlDetection().convert(message.content)
-            if not has_invalid_link:
-                await message.delete()
-                reason = "Automatic action carried out for using a blacklisted link."
+    #         has_invalid_link = UrlDetection().convert(message.content)
+    #         if not has_invalid_link:
+    #             await message.delete()
+    #             reason = "Automatic action carried out for using a blacklisted link."
             
-                await self.autowarn(message.author, reason, message)
+    #             await self.autowarn(message.author, reason, message)
                 
 
 

@@ -3,8 +3,8 @@ import discord
 from discord.ext import commands
 from discord.utils import get
 
-from utils.classes import EmbedLog
 from datetime import datetime
+import humanize
 
 BOT_COMMANDS = (
     "!verify",
@@ -116,9 +116,10 @@ class ModEvents(commands.Cog):
             colour = discord.Colour.green(),
             timestamp = datetime.utcnow()
         )
+        
         embed.set_author(name=str(member), icon_url=member.avatar_url, url=member.avatar_url)
         embed.set_footer(text=f"ID: {member.id}")
-        description = f"{member.mention}'s account {datetime.strftime(member.created_at, 'was created on %A %d, %B of %Y at %H:%M %p')}\n*New server member count: {member.guild.member_count}*"
+        description = f"{member.mention} {humanize.ordinal(len(member.guild.members))} to join. \n created {humanize.precisedelta(member.created_at - datetime.utcnow(), format='%0.0f', minimum_unit='minutes')} ago"
         embed.description = description
         await MemberLogs(embed, member.guild.text_channels).post_log()
 
@@ -145,7 +146,7 @@ class ModEvents(commands.Cog):
 
         embed.set_author(name=str(member), icon_url=member.avatar_url, url=member.avatar_url)
         embed.set_footer(text=f"ID: {member.id}")
-        embed.description = f"{member.mention} {datetime.strftime(member.joined_at, 'joined us on %A %d, %B of %Y at %H:%M %p')}\n*New server member count: {member.guild.member_count}*"
+        embed.description = f"{member.mention} joined {humanize.precisedelta(member.joined_at - datetime.utcnow(), format='%0.0f')} ago"
 
         roles = member.roles
         roles.remove(member.guild.default_role)

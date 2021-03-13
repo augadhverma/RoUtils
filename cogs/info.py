@@ -1,10 +1,11 @@
 import discord
 import time
 import platform
+import humanize
 
 from typing import Optional, Union
 from discord.ext import commands
-from datetime import datetime
+from datetime import date, datetime
 
 from utils.cache import Cache, CacheType
 from utils.classes import RobloxUser
@@ -68,15 +69,17 @@ class Information(commands.Cog, description="Info related stuff."):
             value=user.id,
             inline=False
         )
+
         embed.add_field(
             name="Created",
-            value=datetime.strftime(user.created_at, '%a %d, %B of %Y at %H:%M %p'),
+        
+            value=f'{datetime.strftime(user.created_at, "%a %d, %B of %Y at %H:%M %p")} \n {humanize.precisedelta(user.created_at - datetime.utcnow(), minimum_unit="hours", format="%0.0f")} ago',
             inline=False
         )
         if isinstance(user, discord.Member):
             embed.add_field(
                 name = "Joined",
-                value=datetime.strftime(user.joined_at, '%a %d, %B of %Y at %H:%M %p'),
+                value=f"{datetime.strftime(user.joined_at, '%a %d, %B of %Y at %H:%M %p')}\n {humanize.precisedelta(user.joined_at - datetime.utcnow(), minimum_unit='hours', format='%0.0f')} ago",
                 inline=False
             )
 
@@ -139,9 +142,10 @@ class Information(commands.Cog, description="Info related stuff."):
             inline=False
         )
 
+        created = datetime.strftime(exist.created, '%a %d, %B of %Y at %H:%M %p')
         embed.add_field(
             name="Created At",
-            value=datetime.strftime(exist.created, '%a %d, %B of %Y at %H:%M %p'),
+            value=f"{created}\n({humanize.precisedelta(exist.created - datetime.utcnow(), format='%0.0f', minimum_unit='minutes')} ago)",
             inline=False
         )
 

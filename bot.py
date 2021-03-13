@@ -31,10 +31,10 @@ async def on_ready():
 
 bot.colour = discord.Colour.blurple()
 bot.footer = "RoUtils"
-bot.version = "1.0.1a"
+bot.version = "1.0.2a"
 
 VersionInfo = namedtuple("VersionInfo", "major minor micro releaselevel serial")
-bot.version_info = VersionInfo(major=1, minor=0, micro=1, releaselevel='alpha', serial='0')
+bot.version_info = VersionInfo(major=1, minor=0, micro=2, releaselevel='alpha', serial='0')
 
 # ----- Jishaku Config -----
 os.environ["JISHAKU_NO_UNDERSCORE"] = "True"

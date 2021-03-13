@@ -53,6 +53,45 @@ class TagPages(menus.ListPageSource):
 
         return embed
 
+class Paginator(menus.ListPageSource):
+    def __init__(self, entries, *, per_page=12):
+        super().__init__(
+            entries, per_page
+        )
+
+    async def format_page(self, menu, page) -> discord.Embed:
+        embed = discord.Embed(
+            colour = discord.Color.blurple(),
+            description='\n'.join(item for item in page)
+        )
+        return embed
+
+class BanEntry:
+    __slots__ = ("user","reason")
+    def __init__(self, user:discord.User, reason:Optional[str]="No reason provided") -> None:
+        self.user = user
+        self.reason = reason
+        
+
+class BanList(menus.ListPageSource):
+    def __init__(self, entries, *, per_page=12):
+        converted = []
+        for entry in entries:
+            converted.append({'user':BanEntry(entry).user, 'reason':BanEntry(entry).reason})
+        super().__init__(converted, per_page=per_page)
+
+    async def format_page(self, menu, page) -> discord.Embed:
+        embed = discord.Embed(
+            timestamp = datetime.utcnow(),
+            colour = discord.Color.blurple()
+        )
+        for ban in page:
+            embed.add_field(
+                
+                name = f"{ban['user'].user}",
+                value = ban['reason']
+            )
+        return embed
 
 class InfractionType(Enum):
     warn = 0
