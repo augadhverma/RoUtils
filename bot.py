@@ -31,7 +31,7 @@ async def on_ready():
 
 bot.colour = discord.Colour.blurple()
 bot.footer = "RoUtils"
-bot.version = "1.0.2a"
+bot.version = "1.0.3a"
 
 VersionInfo = namedtuple("VersionInfo", "major minor micro releaselevel serial")
 bot.version_info = VersionInfo(major=1, minor=0, micro=2, releaselevel='alpha', serial='0')

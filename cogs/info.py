@@ -40,7 +40,9 @@ class Information(commands.Cog, description="Info related stuff."):
             "staff":"<:staff:768113190462291988>",
             "council":"<:rowificouncil:768616492363022366>",
             "alpha":"<:rowifialphatier:768616726891855943>",
-            "beta":"<:rowifibetatier:768616655009611796>"
+            "beta":"<:rowifibetatier:768616655009611796>",
+            "management":"<:management:840086265390694460>",
+            "intern":"<:intern:841255618761064508>"
         }
 
         roles = {
@@ -49,7 +51,8 @@ class Information(commands.Cog, description="Info related stuff."):
             "partner":625384618622976001,
             "staff":652203841978236940,
             "council":626860276045840385,
-            "management":671634821323423754
+            "management":671634821323423754,
+            "intern":783068153856131072
         }
 
         user = user or ctx.author
@@ -92,8 +95,6 @@ class Information(commands.Cog, description="Info related stuff."):
             for role in user.roles:
                 for k,v in roles.items():
                     if role.id == v:
-                        if k == "management":
-                            k = "council"
                         tags+=f"{emojis[k]} "
 
             if tags:

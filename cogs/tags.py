@@ -10,7 +10,7 @@ from discord.ext import commands, menus
 from discord.utils import escape_markdown
 
 from utils.db import Connection
-from utils.checks import COUNCIL, MANAGEMENT, staff, council
+from utils.checks import COUNCIL, MANAGEMENT, bot_channel, staff, council
 from utils.cache import Cache
 from utils.classes import TagPages
 
@@ -82,7 +82,7 @@ class Tags(commands.Cog):
             await ctx.send(f"Cannot find tag **{name}**.")
         
 
-    @staff()
+    @bot_channel()
     @commands.group(invoke_without_command=True)
     async def tag(self, ctx:commands.Context,*,name:str):
         """Gets the tag from the database"""
