@@ -40,30 +40,30 @@ class Config(commands.Cog):
 
         else:
             try:
-                self.bot.reload_extension(f"cogs.{name}")
+                self.bot.reload_extension(f"{name}")
             except Exception as e:
                 return await ctx.send(f"```py\n{e}```")
-            await ctx.reply(f"Successfully reloaded: **`cogs/{name}.py`**")
+            await ctx.reply(f"Successfully reloaded: **`{name.replace('.','/')}.py`**")
 
     @commands.is_owner()
     @commands.command()
     async def load(self, ctx:commands.Context, *,name:str):
         """Loads a cog."""
         try:
-            self.bot.load_extension(f"cogs.{name}")
+            self.bot.load_extension(f"{name}")
         except Exception as e:
             return await ctx.send(f"```py\n{e}```")
-        await ctx.send(f"📥 Loaded extension: **`cogs/{name}.py`**")
+        await ctx.send(f"📥 Loaded extension: **`{name.replace('.','/')}.py`**")
 
     @commands.is_owner()
     @commands.command()
     async def unload(self, ctx:commands.Context, *,name:str):
         """Unloads a cog."""
         try:
-            self.bot.unload_extension(f"cogs.{name}")
+            self.bot.unload_extension(f"{name}")
         except Exception as e:
             return await ctx.send(f"```py\n{e}```")
-        await ctx.send(f"📤 Unloaded extension: **`cogs/{name}.py`**")
+        await ctx.send(f"📤 Unloaded extension: **`{name.replace('.','/')}.py`**")
 
     # Add status loop
 

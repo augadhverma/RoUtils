@@ -18,6 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 import os
+from utils.db import MongoClient
 import discord
 import aiohttp
 import datetime
@@ -43,7 +44,8 @@ extensions = (
     'cogs.info',
     'cogs.help',
     'cogs.errorhandler',
-    'cogs.config'
+    'cogs.config',
+    'cogs.misc'
 )
 
 class RoUtils(commands.Bot):
@@ -64,6 +66,7 @@ class RoUtils(commands.Bot):
         self.footer = "RoUtils"
         self.invisible_colour = 0x2F3136
         self.loop.create_task(self.create_session())
+        self.version = "1.1.0b"
 
         for cog in extensions:
             cog:str
@@ -79,6 +82,8 @@ class RoUtils(commands.Bot):
         await self.wait_until_ready()
         if not hasattr(self, "session"):
             self.session = aiohttp.ClientSession()
+        if not hasattr(self, "tags"):
+            self.tags = MongoClient(db="Utilities", collection="Tags")
 
     async def get_or_fetch_member(self, guild:discord.Guild, member_id:int) -> Optional[discord.Member]:
         """Gets a member from the cache, if not found in cache, makes an API call. If the member is not found, `None` is returned.
