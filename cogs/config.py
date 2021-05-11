@@ -1,40 +1,49 @@
-from discord.ext import commands, tasks
-from collections import namedtuple
-from utils.checks import council
-from typing import Optional
+"""
+Bot configuration related.
 
-import os
-import random
+Copyright (C) 2021  ItsArtemiz (Augadh Verma)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>
+"""
+
 import discord
 
-class Config(commands.Cog, description="Bot configuration related things."):
-    def __init__(self, bot:commands.Bot) -> None:
-        self.bot = bot
-        self.bot_change_presence.start()
+from discord.ext import commands
+from bot import RoUtils, extensions
 
-    def cog_unload(self):
-        self.bot_change_presence.cancel()
+class Config(commands.Cog):
+    def __init__(self, bot:RoUtils) -> None:
+        self.bot = bot
 
     @commands.is_owner()
-    @commands.command(name="reload")
-    async def _reload(self, ctx:commands.Context, *,name:str):
-        """Reloads a cog."""
+    @commands.command()
+    async def reload(self, ctx:commands.Cog, *,name:str):
+        """ reloads a/all file(s). """
+        if name == '~':
+            for f in extensions:
+                try:
+                    self.bot.reload_extension(f)
+                except Exception as e:
+                    await ctx.send('```py\n{e}```')
+            return await ctx.reply('Reloaded extensions.')
 
-        if name == "all":
-            for f in os.listdir("cogs"):
-                if f.endswith(".py"):
-                    name = f[:-3]
-                    try:
-                        self.bot.reload_extension(f"cogs.{name}")
-                    except Exception as e:
-                        return await ctx.send(f"```py\n{e}```")
-            await ctx.reply("🔁 Reloaded all extensions.")
         else:
             try:
                 self.bot.reload_extension(f"cogs.{name}")
             except Exception as e:
                 return await ctx.send(f"```py\n{e}```")
-            await ctx.reply(f"🔁 Reloaded extension: **`cogs/{name}.py`**")
+            await ctx.reply(f"Successfully reloaded: **`cogs/{name}.py`**")
 
     @commands.is_owner()
     @commands.command()
@@ -56,82 +65,8 @@ class Config(commands.Cog, description="Bot configuration related things."):
             return await ctx.send(f"```py\n{e}```")
         await ctx.send(f"📤 Unloaded extension: **`cogs/{name}.py`**")
 
-    def get_activity(self) -> namedtuple:
-        Activity = namedtuple("Activity", ["type","name"])
-        activities = {
-            "watching":"the city burn 🔥",
-            "listening":"mom",
-            "playing":"with RoWifi",
-            "watching":"nzp, the noob king :D"
-        }
-
-        activity = random.choice(list(activities.keys()))
-        return Activity(discord.ActivityType[activity], activities[activity])
-
-    def get_status(self) -> discord.Status:
-        return random.choice([
-            discord.Status.online,
-            discord.Status.dnd,
-            discord.Status.idle
-        ])
-
-    @tasks.loop(minutes=5.0)
-    async def bot_change_presence(self) -> None:
-        activity = self.get_activity()
-        status = self.get_status()
-
-        await self.bot.change_presence(
-            activity=discord.Activity(
-                type=activity.type,
-                name=activity.name
-            ),
-            status = status
-        )
-
-    @bot_change_presence.before_loop
-    async def before_change_presence(self) -> None:
-        await self.bot.wait_until_ready()
+    # Add status loop
 
 
-    @council()
-    @commands.group(name="status", invoke_without_command=True)
-    async def change_status(self, ctx:commands.Context, type:str, *, status:str):
-        """Changes the bot status."""
-        member:discord.Member = ctx.guild.get_member(self.bot.user.id)
-        if not type.lower() in ("playing","watching","listening","competing"):
-            type = "playing"
-
-        self.bot_change_presence.cancel()
-        await self.bot.change_presence(
-            activity=discord.Activity(
-            type=discord.ActivityType[type],
-            name=status
-        ),
-        status=member.status
-        )
-
-        await ctx.send("\U0001f44c")
-
-    @council()
-    @change_status.command(name="type")
-    async def _type(self, ctx:commands.Context, activity:Optional[str]):
-        """Changes bot activity state."""
-        activity = activity or "online"
-        member:discord.Member = ctx.guild.get_member(self.bot.user.id)
-
-        await self.bot.change_presence(status=discord.Status[activity], activity=member.activity)
-        await ctx.send("\U0001f44c")
-
-    @council()
-    @change_status.command()
-    async def resume(self, ctx:commands.Context):
-        """Resumes the bot looping status."""
-        try:
-            self.bot_change_presence.start()
-        except RuntimeError:
-            pass
-        await ctx.send("\U0001f44c")
-
-
-def setup(bot:commands.Bot):
-    bot.add_cog(Config(bot))        
+def setup(bot:RoUtils):
+    bot.add_cog(Config(bot))

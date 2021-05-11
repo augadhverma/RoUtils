@@ -1,271 +1,256 @@
+"""
+Handles Discord and Roblox related infos.
+
+Copyright (C) 2021  ItsArtemiz (Augadh Verma)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>
+"""
+
 import discord
-import time
-import platform
-import humanize
+from discord.ext import commands
 
 from typing import Optional, Union
-from discord.ext import commands
-from datetime import date, datetime
+from datetime import datetime
+from utils import roblox, time, cache
+from utils.checks import botchannel
+from bot import RoUtils
 
-from utils.cache import Cache, CacheType
-from utils.classes import RobloxUser
-from utils.requests import get
-from utils.errors import RobloxUserNotFound
-from utils.checks import bot_channel
-from utils.db import Connection
+usersCache = cache.TimedCache()
 
-class Requests:
-    async def roblox_info(self, user:int) -> RobloxUser:
-        try:
-            roblox_id = (await get(f"https://api.rowifi.link/v1/users/{user}"))['roblox_id']
-        except KeyError:
-            raise RobloxUserNotFound("The user is not verified with RoWifi, please ask them to verify themselves by using `!verify`")
-        info = await get(f"https://users.roblox.com/v1/users/{roblox_id}")
-        return RobloxUser(info, user)
 
-class Information(commands.Cog, description="Info related stuff."):
-    def __init__(self, bot:commands.Bot):
+emojis = {
+    "partner":"<:rowifipartners:768616388276912138>",
+    "staff":"<:staff:768113190462291988>",
+    "council":"<:rowificouncil:768616492363022366>",
+    "alpha":"<:rowifialphatier:768616726891855943>",
+    "beta":"<:rowifibetatier:768616655009611796>",
+    "management":"<:management:840086265390694460>"
+}
+
+roles = {
+    "alpha":680859671560585358,
+    "beta":628148318014406657,
+    "partner":625384618622976001,
+    "staff":652203841978236940,
+    "council":626860276045840385,
+    "management":671634821323423754
+}
+
+class Information(commands.Cog):
+    def __init__(self, bot:RoUtils):
         self.bot = bot
-        self.cache = Cache()
-        self.requests = Requests()
-        self.tag_db = Connection("Utilities","Tags")
 
+    async def is_user_in_group(self, userId:int, groupId:int) -> Union[roblox.Member, None]:
+            """Checks if user is in a group or not.
 
-    @commands.command(aliases=['ui', 'whois'])
-    @bot_channel()
-    async def userinfo(self, ctx:commands.Context, *, user:Union[discord.Member, discord.User]=None):
-        """Shows discord related info about a user."""
-        emojis = {
-            "partner":"<:rowifipartners:768616388276912138>",
-            "staff":"<:staff:768113190462291988>",
-            "council":"<:rowificouncil:768616492363022366>",
-            "alpha":"<:rowifialphatier:768616726891855943>",
-            "beta":"<:rowifibetatier:768616655009611796>",
-            "management":"<:management:840086265390694460>",
-            "intern":"<:intern:841255618761064508>"
-        }
+            Parameters
+            ----------
+            userId : int
+                The user'id to check for.
+            groupId : int
+                The group id to check in.
 
-        roles = {
-            "alpha":680859671560585358,
-            "beta":628148318014406657,
-            "partner":625384618622976001,
-            "staff":652203841978236940,
-            "council":626860276045840385,
-            "management":671634821323423754,
-            "intern":783068153856131072
-        }
+            Returns
+            -------
+            Union[Member, None]
+                The `roblox.Member` object if found else `None`
+            """
+            _all = (await self.bot.session.get(f"https://groups.roblox.com/v2/users/{userId}/groups/roles"))
+            _all = (await _all.json())['data']
+            user = await self.bot.session.get(f'https://users.roblox.com/v1/users/{userId}')
+            user = (await user.json())
+            for data in _all:
+                if data['group']['id'] == groupId:
+                    d = {
+                        'name':user['name'],
+                        'id':userId,
+                        'displayName':user['displayName'],
+                        'role':{
+                            'id':data['role']['id'],
+                            'name':data['role']['name'],
+                            'rank':data['role']['rank'],
+                            'memberCount':0
+                        }
+                    }
+                    return roblox.Member(group_id=groupId, data=d)
+            return None
 
-        user = user or ctx.author
-
-        is_bot = ""
-        if user.bot: is_bot=" (Bot)"
-
+    async def build_info_embed(self, member:discord.Member, roUser:roblox.User) -> discord.Embed:
         embed = discord.Embed(
-            colour = self.bot.colour,
-            timestamp = datetime.utcnow()
+            title = "User Information",
+            colour = self.bot.invisible_colour,
+            timestamp = datetime.utcnow(),
+            description="Roblox and Discord information about the user."
         )
+
+        embed.set_thumbnail(url=roUser.avatar_url)
         embed.set_footer(text=self.bot.footer)
-        embed.set_thumbnail(url=user.avatar_url)
-        embed.set_author(name=str(user)+is_bot)
         embed.add_field(
-            name="ID",
-            value=user.id,
+            name="Roblox Information",
+            value=f"**Username:** {roUser.name}\n"\
+                  f"**Id:** {roUser.id}\n"\
+                  f"**Created:** {time.human_time(dt=roUser.created, minimum_unit='minutes')}\n"\
+                  f"[Profile Url]({roUser.profile_url})",
             inline=False
         )
 
-        embed.add_field(
-            name="Created",
         
-            value=f'{datetime.strftime(user.created_at, "%a %d, %B of %Y at %H:%M %p")} \n {humanize.precisedelta(user.created_at - datetime.utcnow(), minimum_unit="hours", format="%0.0f")} ago',
-            inline=False
-        )
-        if isinstance(user, discord.Member):
-            embed.add_field(
-                name = "Joined",
-                value=f"{datetime.strftime(user.joined_at, '%a %d, %B of %Y at %H:%M %p')}\n {humanize.precisedelta(user.joined_at - datetime.utcnow(), minimum_unit='hours', format='%0.0f')} ago",
-                inline=False
-            )
+        flags = ""
+        userroles = ""
+        memberroles = [r for r in member.roles if r != member.guild.default_role]
+        if len(memberroles) > 8:
+            userroles = f"{len(memberroles)} roles"
+        else:
+            userroles = ", ".join(r.mention for r in memberroles)
 
-            embed.add_field(
-                name="Roles",
-                value=' '.join([r.mention for r in user.roles if r != ctx.guild.default_role] or ['None']),
-                inline=False
-            )
-            tags = ""
-            for role in user.roles:
+        for role in member.roles:
                 for k,v in roles.items():
                     if role.id == v:
-                        tags+=f"{emojis[k]} "
+                        flags+=f"{emojis[k]} "
+            
 
-            if tags:
-                embed.add_field(name="Tags", value=tags, inline=False)
+        embed.set_author(name=str(member), icon_url=member.avatar_url)
 
-
-        elif isinstance(user, discord.User):
-            embed.description = "*This member is not in this server*"
-
-
-        await ctx.send(embed=embed)
-
-
-    @commands.command(aliases=['ri', 'rwhois'])
-    @bot_channel()
-    async def robloxinfo(self, ctx:commands.Context, user:Union[discord.User, discord.Member]=None):
-        """Gets roblox related info of a user. Needs to be verified with RoWifi."""
-        user = user or ctx.author
-        if user.bot:
-            return await ctx.send("Discord Bots don't get a fancy Roblox Account.")
-        exist = self.cache.get(CacheType.RobloxUser, str(user.id))
-        if not exist:
-            exist = await self.requests.roblox_info(user.id)
-            self.cache.set(CacheType.RobloxUser, str(user.id), exist)
-
-        embed = discord.Embed(
-            colour = self.bot.colour,
-            timestamp = datetime.utcnow()
+        embed.add_field(
+            name="Guild Information",
+            value=f"**Name:** {member.display_name}\n"\
+                    f"**Id:** {member.id}\n"\
+                    f"**Created:** {time.human_time(dt=member.created_at, minimum_unit='minutes')}\n"\
+                    f"**Joined:** {time.human_time(dt=member.joined_at, minimum_unit='minutes')}\n"\
+                    f"**Roles:** {userroles}\n"\
+                    f"**Flags:** {flags}"
         )
-        embed.set_footer(text=self.bot.footer)
-        embed.set_author(name=str(user))
+
+        return embed
+
+    @botchannel()
+    @commands.command(aliases=["useringroup"])
+    async def uig(self, ctx:commands.Context, user:Union[int, discord.User, str], groupId:int):
+        """ Checks if the user is in group or not. """
+        userId = 1
         
-        is_banned = ""
-        if exist.is_banned:
-            is_banned = " (Banned from Roblox)"
-
-        embed.add_field(
-            name="Name",
-            value=exist.name+is_banned,
-            inline=False
-        )
-
-        embed.add_field(
-            name="Roblox Id",
-            value=exist.id,
-            inline=False
-        )
-
-        created = datetime.strftime(exist.created, '%a %d, %B of %Y at %H:%M %p')
-        embed.add_field(
-            name="Created At",
-            value=f"{created}\n({humanize.precisedelta(exist.created - datetime.utcnow(), format='%0.0f', minimum_unit='minutes')} ago)",
-            inline=False
-        )
-
-        embed.add_field(
-            name="Profile Link",
-            value=f"[Click Here](https://www.roblox.com/users/{exist.id}/profile)",
-            inline=False
-        )
-
-        embed.set_thumbnail(url=f"http://www.roblox.com/Thumbs/Avatar.ashx?x=150&y=150&Format=Png&username={exist.name}")
-
-        await ctx.send(embed=embed)
-
-    @commands.command()
-    @bot_channel()
-    async def ping(self, ctx:commands.Context):
-        """Shows the bot ping."""
-        start = time.perf_counter()
-        msg = await ctx.send("Pinging...")
-        end = time.perf_counter()
-        duration = (end-start)*1000
-
-        db_start = time.perf_counter()
-        await self.tag_db.count_documents({})
-        db_end = time.perf_counter()
-        db_duration = (db_end - db_start)*1000
-
-        embed = discord.Embed(
-            colour = self.bot.colour,
-            timestamp = datetime.utcnow()
-        )
-
-        embed.set_footer(text=self.bot.footer)
-
-        embed.add_field(
-            name="<a:typing:800335819764269096> | Typing",
-            value=f"`{duration:.2f}ms`"
-        )
-
-        embed.add_field(
-            name="<:routils:802250413973831712> | Websocket",
-            value=f"`{(self.bot.latency*1000):.2f}ms`"
-        )
-
-        embed.add_field(
-            name="<:mongo:814706574928379914> Database",
-            value=f"`{db_duration:.2f}ms`"
-        )
-
-        await msg.edit(embed=embed, content="")
-
-
-    @commands.command()
-    @bot_channel()
-    async def botinfo(self, ctx:commands.Context):
-        """Shows botinfo"""
-        embed = discord.Embed(
-            title="Bot Info",
-            colour = self.bot.colour,
-            timestamp = datetime.utcnow()
-        )
-        embed.description = "A multi-purpose bot to keep the RoWifi server a cool place."
-        embed.set_footer(text=self.bot.footer)
-        embed.set_thumbnail(url=self.bot.user.avatar_url)
-
-        embed.add_field(
-            name="Developer",
-            value="[ItsArtemiz](https://discord.com/users/449897807936225290)"
-        )
-        embed.add_field(
-            name="Python Version",
-            value=platform.python_version()
-        )
-        embed.add_field(
-            name="Discord.py Version",
-            value=discord.__version__
-        )
-        embed.add_field(
-            name="Bot Version",
-            value=self.bot.version
-        )
-        embed.add_field(
-            name="Server",
-            value=platform.system()
-        )
-
-        embed.add_field(
-            name="Total Commands",
-            value=len(self.bot.commands)
-        )
-
-        await ctx.send(embed=embed)
-
-    @commands.command()
-    @bot_channel()
-    async def spotify(self, ctx:commands.Context, user:Optional[discord.Member]):
-        """Shows the spotify status of a user"""
-        user = user or  ctx.author
-        if user.activity is None:
-            return await ctx.send(f"**{user}** is not listening to spotify currently.")
-        for activity in user.activities:
-            if isinstance(activity, discord.Spotify):
-                activity:discord.Spotify = activity
-                embed = discord.Embed(
-                    title = activity.title,
-                    colour = activity.colour,
-                    timestamp = activity.start,
-                    url = f"https://open.spotify.com/track/{activity.track_id}"
-                )
-                embed.set_footer(text=f"Started listening at")
-                embed.set_thumbnail(url=activity.album_cover_url)
-                if len(activity.artists) > 1:
-                    artists = ", ".join([a for a in activity.artists])
+        if isinstance(user, int):
+            userId = user
+        
+        elif isinstance(user, discord.User):
+            response = await self.bot.session.get(f"https://api.rowifi.link/v1/users/{user.id}?guild_id={ctx.guild.id}")
+            r = await response.json()
+            if r['success']:
+                userId = r['roblox_id']
+        
+        elif isinstance(user, str):
+            data = {
+                'usernames':[
+                    user
+                ]
+            }
+            response = await self.bot.session.post("https://users.roblox.com/v1/usernames/users", data=data)
+            r = await response.json()
+            if r:
+                if len(r['data']):
+                    userId = r['data'][0]['id']
                 else:
-                    artists = activity.artist
-                embed.description = f"**Artists:** {artists}\n**Album:** {activity.album}\n**Duration:** {str(activity.duration)[2:-7]}"
-                return await ctx.send(embed=embed)
-        else:
-            return await ctx.send(f"**{user}** is not listening to spotify currently.")
+                    return await ctx.send("Can't find a user with the given name.")
 
-def setup(bot:commands.Bot):
+        member = await self.is_user_in_group(userId=userId, groupId=groupId)
+        if member:
+            await ctx.send(f"{member.name} is in the group with id {member.group_id}. They have the role: {member.role.name} (Rank: {member.role.rank})")
+        else:
+            await ctx.send("The user is not in the given group id.")
+
+    @botchannel()
+    @commands.command(aliases=["ui"])
+    async def userinfo(self, ctx:commands.Context, member:Optional[Union[discord.Member, discord.User]]):
+        """ Gives information on a user. If no user is given, the information is showed of the invokee of the command."""
+        member = member or ctx.author
+
+        
+
+        if isinstance(member, discord.Member):
+            embed = usersCache.get(member.id, None)
+            if embed is None:
+                rowifiResponse = await self.bot.session.get(f"https://api.rowifi.link/v1/users/{member.id}?guild_id={ctx.guild.id}")
+                rowifi_json = await rowifiResponse.json()
+
+                data = {}
+
+                if not rowifi_json['success']:
+                    await ctx.send("\U000026a0 User is not verified with RoWifi!")
+                    data = {
+                        "name":"JohnDoe",
+                        "id":0,
+                        "displayName":"JohnDoe",
+                        "description":"User is not verifed with RoWifi. Please ask them to do so",
+                        "created":datetime.strftime(datetime.utcnow(), '%Y-%m-%dT%H:%M:%S.%fZ'),
+                        "banned":None
+                    }
+                else:
+                    roId = rowifi_json['roblox_id']
+                    robloxResponse = await self.bot.session.get(f"https://users.roblox.com/v1/users/{roId}")
+                    roblox_json = await robloxResponse.json()
+                    try:
+                        if roblox_json['errors']:
+                            data = data
+                        else:
+                            pass
+                    except KeyError:
+                        data = roblox_json
+                
+                roUser = roblox.User(data=data)
+
+                embed = await self.build_info_embed(member=member, roUser=roUser)
+                usersCache[member.id] = embed
+            
+            return await ctx.send(embed=embed)
+
+        elif isinstance(member, discord.User):
+            embed = discord.Embed(
+                title = "User Information",
+                description = "*This user is not in the server.*",
+                colour=self.bot.invisible_colour,
+                timestamp=datetime.utcnow()
+            )
+            embed.set_author(name=str(member), icon_url=member.avatar_url)
+            embed.add_field(
+                name = "ID", value=member.id, inline=False
+            )
+            embed.add_field(
+                name="Created", value=time.human_time(member.created_at),inline=False
+            )
+            embed.set_footer(text=self.bot.footer)
+
+            return await ctx.send(embed=embed)
+
+    @botchannel()
+    @commands.command(aliases=['av'])
+    async def avatar(self, ctx:commands.Context, user:Optional[Union[discord.User, discord.Member]]):
+        """ Shows avatar of a user. """
+        user = user or ctx.author
+        embed = discord.Embed(
+            title = f"Avatar for {user}",
+            timestamp = datetime.utcnow(),
+            colour = self.bot.colour
+        )
+
+        embed.set_footer(text=self.bot.footer)
+        embed.set_image(url=user.avatar_url)
+
+        embed.add_field(
+            name="Link as",
+            value=f"[png]({user.avatar_url_as(format='png')}) | [jpg]({user.avatar_url_as(format='jpg')}) | [webp]({user.avatar_url_as(format='webp')})"
+        )
+        await ctx.send(embed=embed)
+
+def setup(bot:RoUtils):
     bot.add_cog(Information(bot))
