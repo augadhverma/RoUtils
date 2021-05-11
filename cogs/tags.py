@@ -10,7 +10,7 @@ from discord.ext import commands, menus
 from discord.utils import escape_markdown
 
 from utils.db import Connection
-from utils.checks import COUNCIL, MANAGEMENT, bot_channel, staff, council
+from utils.checks import COUNCIL, MANAGEMENT, bot_channel, staff
 from utils.cache import Cache
 from utils.classes import TagPages
 
@@ -151,7 +151,7 @@ class Tags(commands.Cog):
         else:
             await ctx.send(f"Unable to find tag **{name}**.")
 
-    @staff()
+    @bot_channel()
     @tag.command()
     async def info(self, ctx:commands.Context, *,name:str):
         """Shows info about a tag"""
@@ -172,7 +172,7 @@ class Tags(commands.Cog):
 
         await ctx.send(embed=embed)
 
-    @staff()
+    @bot_channel()
     @tag.command(name="list", aliases=['all'])
     async def _list(self, ctx:commands.Context, user:Optional[discord.User]):
         """Shows all the registered tags"""
@@ -190,7 +190,7 @@ class Tags(commands.Cog):
         menu = menus.MenuPages(source=TagPages(entries=a, per_page=20))
         await menu.start(ctx)
 
-    @staff()
+    @bot_channel()
     @commands.command()
     async def tags(self, ctx:commands.Context, user:Optional[discord.User]):
         """Shows all the registered tags
