@@ -18,7 +18,7 @@ class InfractionType(enum.Enum):
         return self.value
 
     def __repr__(self) -> str:
-        return f"<InfractionType name={self.name}> value={self.value}"
+        return f"<InfractionType name='{self.name}' value={self.value}>"
 
 class InfractionEntry:
     __slots__ = ('id', 'type', 'reason', 'mod_id', 'offender_id', 'time', 'until')
@@ -31,7 +31,7 @@ class InfractionEntry:
 
     def __repr__(self) -> str:
         return f"<InfractionEntry id={self.id!r}> type={self.type!r} offender_id={self.offender_id!r} "\
-               f"mod_id={self.mod_id!r} time={self.time!r} until={self.until!r}"
+               f"mod_id={self.mod_id!r} time={self.time!r} until={self.until!r}>"
 
     def __str__(self) -> str:
         return f"<@{self.offender_id}> was infracted by <@{self.mod_id}>.\n"\
@@ -52,3 +52,26 @@ class InfractionEntry:
         self.until:time.time = data.get('until', None)
         self.reason = data['reason']
         self.id = data['id']
+
+class TagEntry:
+    def __init__(self, *, data:dict) -> None:
+        self._update(data)
+
+    def __str__(self) -> str:
+        return self.content
+
+    def __repr__(self) -> str:
+        return f"<TagEntry id='{self.id}' name='{self.name}' owner_id={self.owner_id} created={self.created} uses={self.uses}\n"\
+               f"aliases='{len(self.aliases)} aliases'>"
+
+    def __eq__(self, o: object) -> bool:
+        return o.id == self.id
+
+    def _update(self, data:dict):
+        self.owner_id = data['owner']
+        self.name = data['name']
+        self.content = data['content']
+        self.uses = data['uses']
+        self.created = data['created']
+        self.aliases = data.get('aliases', [])
+        self.id = data['_id']

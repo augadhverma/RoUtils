@@ -18,6 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 from typing import Union
+from utils.db import MongoClient
 import discord
 
 from discord.ext import commands
@@ -25,11 +26,22 @@ from discord.ext.commands import bot
 from bot import RoUtils
 
 from utils.checks import botchannel, staff
+from utils.utils import TagEntry
 
-cache = dict()
 
 class Tags(commands.Cog):
     def __init__(self, bot:RoUtils):
         self.bot = bot
-        self.db = bot.tags
+        self._cache = dict()
+        self.db = MongoClient(db="Utilities", collection="Tags")
 
+    @commands.command()
+    async def tag(self, ctx:commands.Context, *, name):
+        tag = self._cache.get(name, None)
+        if tag is None:
+            tag = TagEntry(data=await self.db.find_one({'name':name}))
+            self._cache[name] = tag
+        await ctx.send(repr(tag))
+
+def setup(bot):
+    bot.add_cog(Tags(bot))

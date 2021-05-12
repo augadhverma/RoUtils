@@ -45,7 +45,8 @@ extensions = (
     'cogs.help',
     'cogs.errorhandler',
     'cogs.config',
-    'cogs.misc'
+    'cogs.misc',
+    'cogs.tags'
 )
 
 class RoUtils(commands.Bot):
@@ -82,8 +83,6 @@ class RoUtils(commands.Bot):
         await self.wait_until_ready()
         if not hasattr(self, "session"):
             self.session = aiohttp.ClientSession()
-        if not hasattr(self, "tags"):
-            self.tags = MongoClient(db="Utilities", collection="Tags")
 
     async def get_or_fetch_member(self, guild:discord.Guild, member_id:int) -> Optional[discord.Member]:
         """Gets a member from the cache, if not found in cache, makes an API call. If the member is not found, `None` is returned.
