@@ -256,23 +256,23 @@ class Tags(commands.Cog):
         else:
             return await ctx.send(f"Cannot find the tag: **{oldname}**")
 
-    # @botchannel()
-    # @tag.command()
-    # async def search(self, ctx:commands.Context, *,name:str):
-    #     """ Searches a tag """
-    #     _all = []
-    #     try:
-    #         tag = await self.get_tag(name=name)
-    #     except TagNotFound:
-    #         async for t in self.db.find():
-    #             _all.append(t['name'])
-    #             for a in t['aliases']:
-    #                 _all.append(a)
+    @botchannel()
+    @tag.command()
+    async def search(self, ctx:commands.Context, *, name:str):
+        """ Searches for a tag. """
+        try:
+            tag = self.get_tag(name=name)
+        except TagNotFound:
+            _all = []
+            async for t in self.db.find():
+                _all.append(t['name'])
+                self._cache[t['name']] = t
+                for a in t['aliases']:
+                    _all.append(a)
+                    self._cache[a] = t
+            
+        # Need to search for tags
+        # Possibly add a count documents to avoid API Call to the db.
 
-    #     matches = get_close_matches(name, _all)
-    #     if not matches:
-    #         return await ctx.send('Tag not found.')
-    #     else:
-    #         await ctx.send(f'Found the tags: {", ".join([matches])}')
 def setup(bot):
     bot.add_cog(Tags(bot))

@@ -25,7 +25,7 @@ import humanize
 from bot import RoUtils
 from discord.ext import commands
 
-from utils.checks import admin, intern
+from utils.checks import admin, botchannel, intern
 
 class Miscellaneous(commands.Cog):
     def __init__(self, bot:RoUtils):
@@ -97,7 +97,29 @@ class Miscellaneous(commands.Cog):
             else:
                 await message.channel.send(f"{message.author.mention}, {user.name} has been AFK for {humanize.naturaldelta(dt.timedelta(seconds=time.time() - afked[0]))} with reason: {afked[1]}")
         
+    @botchannel()
+    @commands.command()
+    async def ping(self, ctx:commands.Context):
+        """ Shows bot ping. """
 
+        start = time.perf_counter()
+        m:discord.Message = await ctx.send('Pinging...')
+        end = time.perf_counter()
+        duration = (end-start)*1000
+
+        embed = discord.Embed(
+            colour = self.bot.invisible_colour
+        )
+        embed.add_field(
+            name="<a:typing:828718094959640616> | Typing",
+            value=f"`{duration:.2f}ms`"
+        )
+        embed.add_field(
+            name="<:stab:828715097407881216> | Websocket",
+            value=f"`{(self.bot.latency*1000):.2f}ms`"
+        )
+
+        await m.edit(content=None, embed=embed)
 
 def setup(bot:RoUtils):
     bot.add_cog(Miscellaneous(bot))
