@@ -35,7 +35,7 @@ class Config(commands.Cog):
                 try:
                     self.bot.reload_extension(f)
                 except Exception as e:
-                    await ctx.send('```py\n{e}```')
+                    await ctx.send(f'```py\n{e}```')
             return await ctx.reply('Reloaded extensions.')
 
         else:

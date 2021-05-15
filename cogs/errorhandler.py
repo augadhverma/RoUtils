@@ -23,6 +23,7 @@ import traceback
 
 from utils.logging import embed_builder, post_log
 from utils.checks import NotBotChannel, NotAdmin, NotStaff
+from utils.utils import TagNotFound
 from discord.ext import commands
 from bot import RoUtils
 
@@ -110,9 +111,9 @@ class CommandErrorHandler(commands.Cog):
             await ctx.send("Invalid command usage, follow the help:")
             await ctx.send_help(ctx.command)
         
-        elif isinstance(error, (NotStaff, NotAdmin, NotBotChannel)):
+        elif isinstance(error, (NotStaff, NotAdmin, NotBotChannel, TagNotFound)):
             await ctx.send(str(error))
-       
+
         else:
             embed = embed_builder(
                 bot = self.bot,

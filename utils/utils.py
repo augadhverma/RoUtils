@@ -1,3 +1,4 @@
+from datetime import datetime
 import enum
 import time
 
@@ -46,14 +47,15 @@ class InfractionEntry:
 
     def _update(self, data:dict):
         self.type = InfractionType[data['type']]
-        self.mod_id = data['moderator']
-        self.offender_id = data['offender']
+        self.mod_id:int = data['moderator']
+        self.offender_id:int = data['offender']
         self.time:time.time = data['time']
         self.until:time.time = data.get('until', None)
-        self.reason = data['reason']
-        self.id = data['id']
+        self.reason:str = data['reason']
+        self.id:int = data['id']
 
 class TagEntry:
+    __slots__ = ('id', 'name', 'content', 'created', 'aliases', 'uses', 'content', 'owner_id', 'raw')
     def __init__(self, *, data:dict) -> None:
         self._update(data)
 
@@ -68,10 +70,14 @@ class TagEntry:
         return o.id == self.id
 
     def _update(self, data:dict):
-        self.owner_id = data['owner']
-        self.name = data['name']
-        self.content = data['content']
-        self.uses = data['uses']
-        self.created = data['created']
-        self.aliases = data.get('aliases', [])
-        self.id = data['_id']
+        self.owner_id:int = data['owner']
+        self.name:str = data['name']
+        self.content:str = data['content']
+        self.uses:int = data['uses']
+        self.created:datetime = data['created']
+        self.aliases:list = data.get('aliases', [])
+        self.id:str = data['_id']
+        self.raw = data
+
+class TagNotFound(Exception):
+    pass

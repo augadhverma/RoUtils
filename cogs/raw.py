@@ -18,9 +18,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 
-from discord.ext import commands, menus
+from datetime import datetime
+import discord
+from discord.ext import commands
 from bot import RoUtils
-from utils.paginator import RawPageSource
+from utils.paginator import jskpagination
+from utils.checks import admin, intern
 from utils import cache
 
 urlCache = cache.TimedCache(seconds=3600)
@@ -50,7 +53,7 @@ class RawAPI(commands.Cog):
         r = await self.bot.session.get(url)
         return await r.json()
 
-
+    @intern()
     @commands.group(invoke_without_command=True)
     async def raw(self, ctx:commands.Context, url:str):
         raw = urlCache.get(url, None)
@@ -58,12 +61,9 @@ class RawAPI(commands.Cog):
             raw = await self.get_json_content(url=url)
             raw = str(raw)
             urlCache[url] = raw
-        max_size = 500
-        if len(raw) < 800:
-            max_size = 1000
-        menu = menus.MenuPages(RawPageSource(raw, prefix="```yaml", max_size=max_size))
-        await menu.start(ctx)
+        await jskpagination(ctx, raw)
 
+    @intern()
     @raw.command()
     async def roles(self, ctx:commands.Context, group_id:int):
         raw = rolesCache.get(group_id, None)
@@ -71,12 +71,9 @@ class RawAPI(commands.Cog):
             raw = await self.get_json_content(url=f"{group}/{group_id}/roles")
             raw = str(raw)
             rolesCache[group_id] = raw
-        max_size = 500
-        if len(raw) < 800:
-            max_size = 1000
-        menu = menus.MenuPages(RawPageSource(raw, prefix="```yaml", max_size=max_size))
-        await menu.start(ctx)
-        
+        await jskpagination(ctx, raw, max_size=1900)
+
+    @intern()
     @raw.command()
     async def group(self, ctx:commands.Context, group_id:int):
         raw = groupCache.get(group_id, None)
@@ -84,15 +81,40 @@ class RawAPI(commands.Cog):
             raw = await self.get_json_content(url=f"{group}/{group_id}")
             raw = str(raw)
             groupCache[group_id] = raw
-        max_size = 500
-        if len(raw) < 800:
-            max_size = 1000
-        menu = menus.MenuPages(RawPageSource(raw, prefix="```yaml", max_size=max_size))
-        await menu.start(ctx)
 
-    
+        await jskpagination(ctx, raw)
 
+    @admin()
+    @raw.command()
+    async def cache(self, ctx:commands.Context):
+        embed = discord.Embed(
+            title = 'Current Raw Cache',
+            colour = self.bot.invisible_colour,
+            timestamp = datetime.utcnow()
+        )
+        groups = ", ".join([str(k) for k,_ in groupCache.items()])
+        urls = ", ".join([str(k) for k,_ in urlCache.items()])
+        roles = ", ".join([str(k) for k,_ in rolesCache.items()])
+
+        embed.add_field(
+            name="Groups in Cache",
+            value=groups or 'None',
+            inline=False
+        )
+
+        embed.add_field(
+            name="Roles in Cache",
+            value=roles or 'None',
+            inline=False
+        )
               
+        embed.add_field(
+            name="Urls in Cache",
+            value=urls or 'None',
+            inline=False
+        )
+
+        await ctx.send(embed=embed)
 
 def setup(bot:RoUtils):
     bot.add_cog(RawAPI(bot))
