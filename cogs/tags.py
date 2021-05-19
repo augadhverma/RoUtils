@@ -45,8 +45,7 @@ class Tags(commands.Cog):
             return ref.resolved.to_reference()
         return None
 
-    async def get_tag(self, name:str) -> TagEntry:
-        name = name.lower()
+    async def get_tag(self, name:str, update_uses=True) -> TagEntry:
         tag = self._cache.get(name, None)
         if tag is None:
             document = await self.db.find_one({"$or":[{"name":{"$eq":name}}, {"aliases":{"$in":[name]}}]})
@@ -57,12 +56,13 @@ class Tags(commands.Cog):
 
         if isinstance(tag, TagEntry):
             data = tag.raw
-            data['uses'] = tag.uses + 1
+            if update_uses:
+                data['uses'] = tag.uses + 1
+                await self.db.update_one({'_id':tag.id}, {'$set':{'uses':tag.uses}})
             tag = TagEntry(data=data)
             for alias in tag.aliases:
                 self._cache[alias] = tag
             self._cache[tag.name] = tag
-            await self.db.update_one({'_id':tag.id}, {'$set':{'uses':tag.uses}})
 
         return tag
             
@@ -231,9 +231,9 @@ class Tags(commands.Cog):
     async def alias(self, ctx:commands.Context, newname:str, *, oldname:str):
         """ Adds an alias to a tag. """
 
-        old = await self.get_tag(name=oldname)
+        old = await self.get_tag(name=oldname, update_uses=False)
         try:
-            new = await self.get_tag(name=newname)
+            new = await self.get_tag(name=newname, update_uses=False)
         except TagNotFound:
             new = None
 
@@ -261,7 +261,7 @@ class Tags(commands.Cog):
     async def search(self, ctx:commands.Context, *, name:str):
         """ Searches for a tag. """
         try:
-            tag = self.get_tag(name=name)
+            tag = await self.get_tag(name=name, update_uses=False)
         except TagNotFound:
             _all = []
             async for t in self.db.find():
@@ -273,6 +273,48 @@ class Tags(commands.Cog):
             
         # Need to search for tags
         # Possibly add a count documents to avoid API Call to the db.
+
+    @botchannel()
+    @tag.command()
+    async def claim(self, ctx:commands.Context, *, name:str):
+        """ Claims a tag. """
+        tag = await self.get_tag(name, update_uses=False)
+        if tag.owner_id in [m.id for m in ctx.guild.members]:
+            return await ctx.send("The tag owner is still in the guild.")
+        else:
+            await self.db.update_one({'name':name}, {'$set':{'owner':ctx.author.id}})
+            data = {
+                '_id':tag.id,
+                'owner':ctx.author.id,
+                'name':name,
+                'content':tag.content,
+                'uses':tag.uses,
+                'created':tag.created,
+                'aliases':tag.aliases
+            }
+            self._cache[name] = TagEntry(data=data)
+            return await ctx.send("Succesfully claimed the tag.")
+
+    @botchannel()
+    @tag.command()
+    async def transfer(self, ctx:commands.Context, name:str, user:discord.Member):
+        """ Transfers a tag. """
+        tag = await self.get_tag(name, update_uses=False)
+        if tag.owner_id == ctx.author.id:
+            await self.db.update_one({'name':name}, {'$set':{'owner':user.id}})
+            data = {
+            '_id':tag.id,
+            'owner':user.id,
+            'name':name,
+            'content':tag.content,
+            'uses':tag.uses,
+            'created':tag.created,
+            'aliases':tag.aliases
+            }
+            self._cache[name] = TagEntry(data=data)
+            return await ctx.send(content=f"Successfully transferred the tag to {user.name}")
+        else:
+            return await ctx.send("You do not own this tag.")
 
 def setup(bot):
     bot.add_cog(Tags(bot))
