@@ -240,7 +240,7 @@ class Information(commands.Cog):
         embed = discord.Embed(
             title = f"Avatar for {user}",
             timestamp = datetime.utcnow(),
-            colour = self.bot.colour
+            colour = self.bot.invisible_colour
         )
 
         embed.set_footer(text=self.bot.footer)

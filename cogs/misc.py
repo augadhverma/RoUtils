@@ -24,8 +24,10 @@ import humanize
 
 from bot import RoUtils
 from discord.ext import commands
+from typing import Optional
 
 from utils.checks import admin, botchannel, intern
+from utils.paginator import jskpagination
 
 class Miscellaneous(commands.Cog):
     def __init__(self, bot:RoUtils):
@@ -120,6 +122,20 @@ class Miscellaneous(commands.Cog):
         )
 
         await m.edit(content=None, embed=embed)
+
+    @botchannel()
+    @commands.command()
+    async def msgraw(self, ctx:commands.Context, message_id:int, channel_id:Optional[int]):
+        """ Returns raw content of a message.
+        If the message is from another channel, then you have to provide it aswell """
+
+        channel_id = channel_id or ctx.channel.id
+
+        content = await self.bot.http.get_message(channel_id=channel_id, message_id=message_id)
+
+        await jskpagination(ctx, str(content), wrap_on=(','))
+        
+
 
 def setup(bot:RoUtils):
     bot.add_cog(Miscellaneous(bot))

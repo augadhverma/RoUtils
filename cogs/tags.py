@@ -45,7 +45,7 @@ class Tags(commands.Cog):
             return ref.resolved.to_reference()
         return None
 
-    async def get_tag(self, name:str, update_uses=True) -> TagEntry:
+    async def get_tag(self, name:str, update_uses=False) -> TagEntry:
         tag = self._cache.get(name, None)
         if tag is None:
             document = await self.db.find_one({"$or":[{"name":{"$eq":name}}, {"aliases":{"$in":[name]}}]})
@@ -88,14 +88,14 @@ class Tags(commands.Cog):
     @commands.group(invoke_without_command=True)
     async def tag(self, ctx:commands.Context, *, name:str):
         """ Shows a tag. """
-        tag = await self.get_tag(name=name)
+        tag = await self.get_tag(name=name, update_uses=True)
         await ctx.send(tag.content, reference=self.replied_reference(ctx.message))
 
     @botchannel()
     @tag.command()
     async def info(self, ctx:commands.Context, *,name:str):
         """ Shows info on a tag."""
-        tag = await self.get_tag(name=name)
+        tag = await self.get_tag(name=name, update_uses=True)
 
         embed = discord.Embed(
             title = tag.name,
@@ -156,7 +156,7 @@ class Tags(commands.Cog):
     @tag.command()
     async def raw(self, ctx:commands.Context, *, name:str):
         """ Shows raw information about a tag. Escapes markdown and mentions. """
-        tag = await self.get_tag(name=name)
+        tag = await self.get_tag(name=name, update_uses=True)
 
         await ctx.send(discord.utils.escape_markdown(tag.content))
 
@@ -260,19 +260,19 @@ class Tags(commands.Cog):
     @tag.command()
     async def search(self, ctx:commands.Context, *, name:str):
         """ Searches for a tag. """
-        try:
-            tag = await self.get_tag(name=name, update_uses=False)
-        except TagNotFound:
-            _all = []
-            async for t in self.db.find():
-                _all.append(t['name'])
-                self._cache[t['name']] = t
-                for a in t['aliases']:
-                    _all.append(a)
-                    self._cache[a] = t
-            
-        # Need to search for tags
-        # Possibly add a count documents to avoid API Call to the db.
+        async for doc in self.db.find():
+            doc:dict
+            tag = TagEntry(data=doc)
+            self._cache[tag.name] = tag
+            for alias in tag.aliases:
+                self._cache[alias] = TagEntry(data=doc)
+
+        matches = get_close_matches(name, list(self._cache.keys()), n=10, cutoff=0.6)
+        if len(matches) > 0:
+            await ctx.send("Tags found:\n"+"\n".join(f'`{name}`' for name in matches))
+        else:
+            await ctx.send("Cannot find any tags by the given keyword.")
+
 
     @botchannel()
     @tag.command()

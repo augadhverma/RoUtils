@@ -126,7 +126,6 @@ class CommandErrorHandler(commands.Cog):
 
             await ctx.send(embed = embed)
             msg = await post_log(ctx.guild, name="bot-logs", embed=embed)
-            await msg.pin(reason="An unexpected error occurred")
 
             print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
             traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
