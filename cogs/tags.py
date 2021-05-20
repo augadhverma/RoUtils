@@ -17,16 +17,16 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
-from typing import Optional, Union
-from utils.paginator import jskpagination
-from utils.db import MongoClient
 import discord
 
-from discord.ext import commands
+from discord.ext import commands, menus
 from bot import RoUtils
 from datetime import datetime
 
-from utils.checks import admin, botchannel, staff
+from typing import Optional
+from utils.paginator import TagPages, jskpagination
+from utils.db import MongoClient
+from utils.checks import admin, botchannel
 from utils.utils import TagEntry, TagNotFound
 
 from difflib import get_close_matches
@@ -267,11 +267,17 @@ class Tags(commands.Cog):
             for alias in tag.aliases:
                 self._cache[alias] = TagEntry(data=doc)
 
-        matches = get_close_matches(name, list(self._cache.keys()), n=10, cutoff=0.6)
+        matches = get_close_matches(name, list(self._cache.keys()), n=10, cutoff=0.5)
         if len(matches) > 0:
-            await ctx.send("Tags found:\n"+"\n".join(f'`{name}`' for name in matches))
+            tags = [(await self.get_tag(n)) for n in matches]
+            try:
+                p = TagPages(entries=tags, per_page=20, colour=self.bot.invisible_colour)
+            except menus.MenuError as e:
+                await ctx.send(e)
+            else:
+                await p.start(ctx)
         else:
-            await ctx.send("Cannot find any tags by the given keyword.")
+            await ctx.send("No tags found.")
 
 
     @botchannel()
@@ -317,9 +323,44 @@ class Tags(commands.Cog):
             return await ctx.send("You do not own this tag.")
 
     @botchannel()
-    @tag.command()
+    @tag.command(name="list")
     async def _list(self, ctx:commands.Context, user:Optional[discord.User]):
-        pass
+        "Lists a tag by a user."
+        user = user or ctx.author
+        tags = self.db.find({'owner':user.id})
+        _all = []
+        async for tag in tags:
+            _all.append(TagEntry(data=tag))
+
+        if _all:
+            try:
+                p = TagPages(entries=_all, per_page=20, colour=self.bot.invisible_colour)
+            except menus.MenuError as e:
+                await ctx.send(e)
+            else:
+                await p.start(ctx)
+        else:
+            await ctx.send("No tags found.")
+
+    @botchannel()
+    @tag.command(name='all')
+    async def _all(self, ctx:commands.Context, user:Optional[discord.User]):
+        """ Shows all tags by a user or in the guild. """
+        if user:
+            await ctx.invoke(self._list, user=user)
+        else:
+            tags = [TagEntry(data=tag) async for tag in self.db.find({})]
+            if tags:
+                try:
+                    p = TagPages(entries=tags, per_page=20, colour=self.bot.invisible_colour)
+                except menus.MenuError as e:
+                    await ctx.send(e)
+                else:
+                    await p.start(ctx)
+            else:
+                await ctx.send("No tags found.")
+
+
 
 def setup(bot):
     bot.add_cog(Tags(bot))
