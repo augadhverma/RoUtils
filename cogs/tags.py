@@ -169,15 +169,16 @@ class Tags(commands.Cog):
             if (name == c.name) or (name in c.aliases):
                 return await ctx.send(f'{name} is reserved keyword and cannot be used to create a tag.')
 
-        tag = await self.get_tag(name=name)
-        if tag:
-            return await ctx.send(f'{tag} is already a registered tag.')
-
-        tag = await self.create_tag(ctx.author, name, content)
-        if tag:
-            await ctx.send(f'Successfully created the tag: {name}')
-        else:
-            await ctx.send('Unable to create a tag at the moment.')
+        try:
+            tag = await self.get_tag(name=name)
+            if tag:
+                return await ctx.send(f'{tag} is already a registered tag.')
+        except TagNotFound:
+            tag = await self.create_tag(ctx.author, name, content)
+            if tag:
+                await ctx.send(f'Successfully created the tag: {name}')
+            else:
+                await ctx.send('Unable to create a tag at the moment.')
 
     @admin()
     @tag.command()
