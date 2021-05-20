@@ -17,7 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
-from typing import Union
+from typing import Optional, Union
 from utils.paginator import jskpagination
 from utils.db import MongoClient
 import discord
@@ -315,6 +315,11 @@ class Tags(commands.Cog):
             return await ctx.send(content=f"Successfully transferred the tag to {user.name}")
         else:
             return await ctx.send("You do not own this tag.")
+
+    @botchannel()
+    @tag.command()
+    async def _list(self, ctx:commands.Context, user:Optional[discord.User]):
+        pass
 
 def setup(bot):
     bot.add_cog(Tags(bot))
