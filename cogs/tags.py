@@ -193,6 +193,7 @@ class Tags(commands.Cog):
         tag = await self.get_tag(name=name)
         if (tag.owner_id == ctx.author.id) or (await self.bot.is_owner(ctx.author)):
             await self.db.delete_one({'name':name})
+            del self._cache[name]
             return await ctx.send('Succesfully deleted the tag!')
         
         elif tag.owner_id in ADMINS:
@@ -200,6 +201,7 @@ class Tags(commands.Cog):
 
         elif ctx.author.guild_permissions.administrator:
             await self.db.delete_one({'name':name})
+            del self._cache[name]
             return await ctx.send('Succesfully deleted the tag!')
 
         else:
