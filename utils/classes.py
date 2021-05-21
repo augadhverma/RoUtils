@@ -41,7 +41,7 @@ class TagPages(menus.ListPageSource):
         converted = []
         index = 1
         for entry in entries:
-            name = f"{index}. {TagPageEntry(entry)})"
+            name = f"{index}. {TagPageEntry(entry)}"
             converted.append(name)
             index+=1
 
