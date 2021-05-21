@@ -29,17 +29,19 @@ class RobloxUser:
         return datetime.strptime(roblox_time, "%Y-%m-%dT%H:%M:%S.%fZ")
 
 class TagPageEntry:
-    __slots__ = ('id','name')
+    __slots__ = ('name', 'uses')
     def __init__(self, entry) -> None:
-        self.id = entry['id']
         self.name = entry['name']
+        self.uses = entry['uses']
+    def __str__(self) -> str:
+        return f"{self.name} *(uses: {self.uses})*"
 
 class TagPages(menus.ListPageSource):
     def __init__(self, entries, *, per_page=12):
         converted = []
         index = 1
         for entry in entries:
-            name = f"{index}. {TagPageEntry(entry).name} (ID: {str(TagPageEntry(entry).id)})"
+            name = f"{index}. {TagPageEntry(entry)})"
             converted.append(name)
             index+=1
 
