@@ -46,7 +46,8 @@ extensions = (
     'cogs.errorhandler',
     'cogs.config',
     'cogs.misc',
-    'cogs.tags'
+    'cogs.tags',
+    'cogs.mod'
 )
 
 class RoUtils(commands.Bot):

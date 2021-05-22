@@ -1,6 +1,9 @@
 from datetime import datetime
 import enum
 import time
+from typing import Optional
+
+import discord
 
 class InfractionType(enum.Enum):
     autowarn = 0
@@ -20,6 +23,22 @@ class InfractionType(enum.Enum):
 
     def __repr__(self) -> str:
         return f"<InfractionType name='{self.name}' value={self.value}>"
+
+class InfractionColour(enum.Enum):
+    autowarn = discord.Colour.teal()
+    automute = discord.Colour.teal()
+    warn = discord.Colour.teal()
+    mute = discord.Colour.orange()
+    kick = discord.Colour.red()
+    softban = discord.Colour.red()
+    ban = discord.Colour.dark_red()
+    unban = discord.Colour.green()
+
+    def __str__(self) -> str:
+        return self.value
+
+
+InfractionColor = InfractionColour
 
 class InfractionEntry:
     __slots__ = ('id', 'type', 'reason', 'mod_id', 'offender_id', 'time', 'until')
@@ -46,11 +65,11 @@ class InfractionEntry:
         return not self.__eq__(o)
 
     def _update(self, data:dict):
-        self.type = InfractionType[data['type']]
+        self.type = InfractionType(data['type']).name
         self.mod_id:int = data['moderator']
         self.offender_id:int = data['offender']
         self.time:time.time = data['time']
-        self.until:time.time = data.get('until', None)
+        self.until:Optional[time.time] = data.get('until', None)
         self.reason:str = data['reason']
         self.id:int = data['id']
 

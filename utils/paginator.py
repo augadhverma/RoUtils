@@ -6,8 +6,8 @@ from discord.ext.commands import Paginator
 
 from jishaku.paginators import PaginatorInterface, WrappedPaginator
 
-from typing import Union
-from utils.utils import TagEntry
+from typing import List, Union
+from utils.utils import InfractionEntry, TagEntry
 
 # RoboPages is from RoboDanny
 # https://github.com/Rapptz/RoboDanny/blob/0dfa21599da76e84c2f8e7fde0c132ec93c840a8/cogs/utils/paginator.py
@@ -106,6 +106,13 @@ class SimplePageSource(menus.ListPageSource):
         menu.embed.description = '\n'.join(pages)
         return menu.embed
 
+class EmbedPageSource(menus.ListPageSource):
+    def __init__(self, entries:List[dict], *, per_page=12):
+        super().__init__(entries, per_page=per_page)
+
+    async def format_page(self, menu, page):
+        pass
+
 class SimplePages(RoboPages):
     def __init__(self, entries, *, per_page=12, colour=discord.Colour.blurple()):
         super().__init__(SimplePageSource(entries, per_page=per_page))
@@ -129,3 +136,14 @@ class TagPages(SimplePages):
     def __init__(self, entries, *, per_page=12, colour=discord.Colour.blurple()):
         converted = [TagPageEntry(entry) for entry in entries]
         super().__init__(converted, per_page=per_page, colour=colour)
+
+class InfractionPageEntry:
+    def __init__(self, entry:dict):
+        self.type = InfractionEntry(entry['type']).name
+        self.reason = entry['reason']
+        self.until = entry['until'] - entry['time']
+        self.offender = f'<@{entry["offender"]}>'
+        self.moderator = f'<@{entry["moderator"]}>'
+
+    def __str__(self) -> str:
+        return f""
