@@ -107,11 +107,22 @@ class SimplePageSource(menus.ListPageSource):
         return menu.embed
 
 class EmbedPageSource(menus.ListPageSource):
-    def __init__(self, entries:List[dict], *, per_page=12):
+    def __init__(self, entries:List[dict], *, per_page=12, show_mod=True):
         super().__init__(entries, per_page=per_page)
 
-    async def format_page(self, menu, page):
-        pass
+    async def format_page(self, menu, entries):
+        maximum = self.get_max_pages()
+        if maximum > 1:
+            footer = f'Page {menu.current_page + 1}/{maximum} ({len(self.entries)} entries)'
+            menu.embed.set_footer(text=footer)
+
+        for entry in entries:
+            menu.embed.add_field(
+                name='test',
+                value=entry
+            )
+
+        return menu.embed
 
 class SimplePages(RoboPages):
     def __init__(self, entries, *, per_page=12, colour=discord.Colour.blurple()):
