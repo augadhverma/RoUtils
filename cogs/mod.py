@@ -207,5 +207,10 @@ class Moderation(commands.Cog):
         else:
             await p.start(ctx)
 
+        # need to fix mentions -> turn into names. pass in ctx to the paginator probably to use converted
+        # need to make a more better paginator.
+
+        # This show duplicates. Need to remove duplicates
+
 def setup(bot:RoUtils):
     bot.add_cog(Moderation(bot))
