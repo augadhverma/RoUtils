@@ -106,24 +106,6 @@ class SimplePageSource(menus.ListPageSource):
         menu.embed.description = '\n'.join(pages)
         return menu.embed
 
-class EmbedPageSource(menus.ListPageSource):
-    def __init__(self, entries:List[dict], *, per_page=12, show_mod=True):
-        super().__init__(entries, per_page=per_page)
-
-    async def format_page(self, menu, entries):
-        maximum = self.get_max_pages()
-        if maximum > 1:
-            footer = f'Page {menu.current_page + 1}/{maximum} ({len(self.entries)} entries)'
-            menu.embed.set_footer(text=footer)
-
-        for entry in entries:
-            menu.embed.add_field(
-                name='test',
-                value=entry
-            )
-
-        return menu.embed
-
 class SimplePages(RoboPages):
     def __init__(self, entries, *, per_page=12, colour=discord.Colour.blurple()):
         super().__init__(SimplePageSource(entries, per_page=per_page))
@@ -147,14 +129,3 @@ class TagPages(SimplePages):
     def __init__(self, entries, *, per_page=12, colour=discord.Colour.blurple()):
         converted = [TagPageEntry(entry) for entry in entries]
         super().__init__(converted, per_page=per_page, colour=colour)
-
-class InfractionPageEntry:
-    def __init__(self, entry:dict):
-        self.type = InfractionEntry(entry['type']).name
-        self.reason = entry['reason']
-        self.until = entry['until'] - entry['time']
-        self.offender = f'<@{entry["offender"]}>'
-        self.moderator = f'<@{entry["moderator"]}>'
-
-    def __str__(self) -> str:
-        return f""

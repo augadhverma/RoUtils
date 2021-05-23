@@ -81,7 +81,7 @@ def embed_builder(bot:commands.Bot, title:str, description:str, user:Union[disco
 
         return embed
 
-def infraction_embed(entry:InfractionEntry, offender:discord.User, type:str=None, small=False,) -> discord.Embed:
+def infraction_embed(entry:InfractionEntry, offender:discord.User, type:str=None, small=False, show_mod=True) -> discord.Embed:
     if small:
         embed = discord.Embed(
             colour = InfractionColour[entry.type].value,
@@ -89,12 +89,16 @@ def infraction_embed(entry:InfractionEntry, offender:discord.User, type:str=None
         )
         return embed
     else:
+        if show_mod:
+            moderator = f"**Moderator:** <@{entry.mod_id}> `({entry.mod_id})`\n"
+        else:
+            moderator = ""
         embed = discord.Embed(
             title = f"{entry.type} | Case #{entry.id}",
             timestamp = datetime.utcnow(),
             colour = InfractionColour[entry.type].value,
             description = f"**Offender:** <@{entry.offender_id}> `({entry.offender_id})`\n"\
-                        f"**Moderator:** <@{entry.mod_id}> `({entry.mod_id})`\n"\
+                        f"{moderator}"\
                         f"**Reason:** {entry.reason}"
         )
 

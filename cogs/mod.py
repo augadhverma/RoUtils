@@ -18,9 +18,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 import time
-from typing import Optional
 import discord
+import humanize
 
+from typing import Optional
 from discord.ext import commands, tasks, menus
 from bot import RoUtils
 
@@ -108,14 +109,87 @@ class Moderation(commands.Cog):
 
         await post_log(ctx.guild, name='bot-logs', embed=embed)
 
-    async def shows_warns(self, ctx:commands.Context, filter:dict):
-        _all = self.db.find(filter)
-        
+        await offender.send(embed=infraction_embed(entry=entry, offender=offender, show_mod=False))
 
-    @staff()
-    @commands.group(invoke_without_command=True)
-    async def warns(self, ctx:commands.Context, user:Optional[discord.User]):
-        """ Shows all warns. If a user is given, show's the user's warn. """
+    @seniorstaff()
+    @commands.command()
+    async def kick(self, ctx:commands.Context, offender:discord.Member, *,reason:commands.clean_content):
+        """ Kicks a user from the server. """
+        await ctx.message.delete()
+
+        if not self.hierarchy_check(ctx.author, offender):
+            return await ctx.send('You cannot perform that action due to the hierarchy.')
+
+        entry = await self.create_infraction(
+            type=InfractionType.kick.value,
+            moderator=ctx.author,
+            offender=offender,
+            reason=reason
+        )
+        embed = infraction_embed(entry=entry, offender=offender, type="kicked", small=True)
+
+        await ctx.send(embed=embed)
+        try:
+            await offender.send(embed=infraction_embed(entry=entry, offender=offender, show_mod=False))
+        except discord.HTTPException:
+            pass
+        try:
+            await offender.kick(reason=reason)
+        except discord.Forbidden:
+            await ctx.send("Cannot Kick This User •.•")
+
+        embed = infraction_embed(entry=entry, offender=offender)
+
+        await post_log(ctx.guild, name='bot-logs', embed=embed)
+
+    @seniorstaff()
+    @commands.command()
+    async def ban(self, ctx:commands.Context, offender:discord.User, *,reason:commands.clean_content):
+        """ Bans a user from the server. """
+        await ctx.message.delete()
+
+        if not self.hierarchy_check(ctx.author, offender):
+            return await ctx.send('You cannot perform that action due to the hierarchy.')
+
+        entry = await self.create_infraction(
+            type=InfractionType.ban.value,
+            moderator=ctx.author,
+            offender=offender,
+            reason=reason
+        )
+        embed = infraction_embed(entry=entry, offender=offender, type="banned", small=True)
+
+        await ctx.send(embed=embed)
+        try:
+            await offender.send(embed=infraction_embed(entry=entry, offender=offender, show_mod=False))
+        except discord.HTTPException:
+            pass
+        await ctx.guild.ban(offender, reason=reason, delete_days=3)
+
+        embed = infraction_embed(entry=entry, offender=offender)
+
+        await post_log(ctx.guild, name='bot-logs', embed=embed)
+
+    @intern()
+    @commands.command(aliases=['sm'])
+    async def slowmode(self, ctx:commands.Context, channel:Optional[discord.TextChannel], delay:Optional[int]):
+        """ Sets the slowmode of the channel given. If no channel is given, current one is used.
+        If no delay is give, it shows the current slowmode of the channel.
+
+        NOTE: The delay should be given in seconds.
+        """
+
+        channel = channel or ctx.channel
+
+        if delay is None:
+            return await ctx.send(f"The current slowmode is **{humanize.intcomma(channel.slowmode_delay)}** seconds.")
+
+        elif delay>21600:
+            return await ctx.send("You cannot set a slowmode more than 6 hours (21600 seconds).")            
+        
+        else:
+            await channel.edit(slowmode_delay=delay)
+            return await ctx.send(f"Succesfully set the slowmode to **{humanize.intcomma(delay)}** seconds.")
 
 def setup(bot:RoUtils):
     bot.add_cog(Moderation(bot))
