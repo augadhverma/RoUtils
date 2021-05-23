@@ -68,7 +68,7 @@ class InfractionEntry:
         self.type = InfractionType(data['type']).name
         self.mod_id:int = data['moderator']
         self.offender_id:int = data['offender']
-        self.time:time.time = data['time']
+        self.time:time.time = data.get('time', None)
         self.until:Optional[time.time] = data.get('until', None)
         self.reason:str = data['reason']
         self.id:int = data['id']

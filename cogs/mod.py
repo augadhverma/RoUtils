@@ -29,6 +29,7 @@ from utils.utils import InfractionEntry, InfractionType
 from utils.db import MongoClient
 from utils.checks import staff, seniorstaff, intern
 from utils.logging import infraction_embed, post_log
+from utils.paginator import InfractionPages
 
 class Moderation(commands.Cog):
     def __init__(self, bot:RoUtils):
@@ -185,11 +186,26 @@ class Moderation(commands.Cog):
             return await ctx.send(f"The current slowmode is **{humanize.intcomma(channel.slowmode_delay)}** seconds.")
 
         elif delay>21600:
-            return await ctx.send("You cannot set a slowmode more than 6 hours (21600 seconds).")            
-        
+            return await ctx.send("You cannot set a slowmode more than 6 hours (21600 seconds).")
+
         else:
             await channel.edit(slowmode_delay=delay)
             return await ctx.send(f"Succesfully set the slowmode to **{humanize.intcomma(delay)}** seconds.")
+
+    @staff()
+    @commands.command()
+    async def warns(self, ctx:commands.Context):
+        pages = []
+        _all = self.db.find({})
+        async for doc in _all:
+            pages.append(doc)
+
+        try:
+            p = InfractionPages(entries=pages, per_page=6, colour=self.bot.invisible_colour, show_mod=True)
+        except menus.MenuError as e:
+            await ctx.send(e)
+        else:
+            await p.start(ctx)
 
 def setup(bot:RoUtils):
     bot.add_cog(Moderation(bot))
