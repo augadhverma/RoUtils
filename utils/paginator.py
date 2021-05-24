@@ -1,13 +1,14 @@
 import asyncio
+import datetime
 import discord
 
-from discord.ext import menus
-from discord.ext.commands import Paginator
+from discord.ext import commands, menus
+import humanize
 
 from jishaku.paginators import PaginatorInterface, WrappedPaginator
 
 from typing import List, Union
-from utils.utils import InfractionEntry, TagEntry
+from utils.utils import InfractionEntry, InfractionType, TagEntry
 
 # RoboPages is from RoboDanny
 # https://github.com/Rapptz/RoboDanny/blob/0dfa21599da76e84c2f8e7fde0c132ec93c840a8/cogs/utils/paginator.py
@@ -106,42 +107,29 @@ class SimplePageSource(menus.ListPageSource):
         menu.embed.description = '\n'.join(pages)
         return menu.embed
 
-class InfractionPageSource(menus.ListPageSource):
-    def __init__(self, entries, *, per_page=6, show_mod=True):
+class FieldPageSource(menus.ListPageSource):
+    """Requires (field_name, field_value)"""
+    def __init__(self, entries, *, per_page=6, colour=discord.Colour.teal()):
         super().__init__(entries, per_page=per_page)
-        self.initial_page = True
-        self.total_entries = len(entries)
-        self.show_mod = show_mod
+        self.embed = discord.Embed(colour=colour)
 
-    async def format_page(self, menu, entries:List[InfractionEntry]):
+    async def format_page(self, menu, entries):
+        self.embed.clear_fields()
+        self.embed.description = discord.Embed.Empty
+
+        for key, value in entries:
+            self.embed.add_field(name=key, value=value, inline=False)
         
         maximum = self.get_max_pages()
         if maximum > 1:
-            footer = f'Page {menu.current_page + 1}/{maximum} ({len(self.entries)} entries)'
-            menu.embed.set_footer(text=footer)
-        menu.embed.title = f"Total Infractions: {self.total_entries}"
-        for entry in entries:
-            if self.show_mod:
-                mod = f"**Moderator:** <@{entry.mod_id}> `({entry.mod_id})`\n"
-            else:
-                mod = ""
-            menu.embed.add_field(
-                name=f"#{entry.id} | {entry.type}",
-                value=f"{mod}"\
-                      f"**Offender:** <@{entry.offender_id}> `({entry.offender_id})`\n"\
-                      f"**Reason:** {entry.reason}"
-            )
+            text = f"Page {menu.current_page+1}/{maximum} ({len(self.entries)} entries)"
 
-        return menu.embed
+            self.embed.set_footer(text=text)
+        return self.embed
 
 class SimplePages(RoboPages):
     def __init__(self, entries, *, per_page=12, colour=discord.Colour.blurple()):
         super().__init__(SimplePageSource(entries, per_page=per_page))
-        self.embed = discord.Embed(colour=colour)
-
-class EmbedPages(RoboPages):
-    def __init__(self, entries, * ,per_page=6, colour=discord.Colour.teal(), show_mod=True):
-        super().__init__(InfractionPageSource(entries, per_page=per_page, show_mod=show_mod))
         self.embed = discord.Embed(colour=colour)
 
 class TagPageEntry:
@@ -163,7 +151,33 @@ class TagPages(SimplePages):
         converted = [TagPageEntry(entry) for entry in entries]
         super().__init__(converted, per_page=per_page, colour=colour)
 
-class InfractionPages(EmbedPages):
+class InfractionPageEntry:
+    def __init__(self, entry:dict, show_mod=True):
+        self.id = entry['id']
+        self.type = InfractionType(entry['type']).name
+        self.mod = f"**Moderator:** <@{entry['moderator']}>"
+        self.offender = f"**Offender:** <@{entry['offender']}>"
+        self.reason = f"**Reason:** {entry['reason']}"
+        
+        if entry['until'] and entry['time']:
+            delta = datetime.timedelta(seconds=entry['until']-entry['time']) 
+            self.until = humanize.precisedelta(delta)
+            self.valid = f"**Valid Until:** {self.until}"
+        else:
+            self.valid = ""
+
+        self.key = f"#{self.id} | {self.type}"
+        if show_mod:
+            mod = f"{self.mod}\n"
+        else:
+            mod = ""
+
+        self.value = f"{mod}"\
+                     f"{self.offender}\n"\
+                     f"{self.reason}\n"\
+                     f"{self.valid}"
+
+class InfractionPages(RoboPages):
     def __init__(self, entries, *, per_page=6, colour=discord.Colour.teal(), show_mod=True):
-        converted = [InfractionEntry(data=entry) for entry in entries]
-        super().__init__(converted, per_page=per_page, colour=colour, show_mod=show_mod)
+        converted = [(InfractionPageEntry(entry, show_mod).key, InfractionPageEntry(entry, show_mod).value) for entry in entries]
+        super().__init__(FieldPageSource(converted, per_page=per_page, colour=colour))

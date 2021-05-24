@@ -193,24 +193,33 @@ class Moderation(commands.Cog):
             return await ctx.send(f"Succesfully set the slowmode to **{humanize.intcomma(delay)}** seconds.")
 
     @staff()
-    @commands.command()
-    async def warns(self, ctx:commands.Context):
+    @commands.group(invoke_without_command=True)
+    async def warns(self, ctx:commands.Context, *,user:Optional[discord.User]):
+        """ Shows all warns.
+        If a user is given, shows the warns given to the user.
+        """
         pages = []
-        _all = self.db.find({})
-        async for doc in _all:
-            pages.append(doc)
+        if user:
+            _all = self.db.find({'offender':user.id})
+            async for doc in _all:
+                pages.append(doc)
+        else:
+            _all = self.db.find({})
+            async for doc in _all:
+                pages.append(doc)
+        if not pages:
+            return await ctx.send("No warns to show.")
 
         try:
-            p = InfractionPages(entries=pages, per_page=6, colour=self.bot.invisible_colour, show_mod=True)
+            p = InfractionPages(pages, per_page=6, show_mod=True)
         except menus.MenuError as e:
             await ctx.send(e)
         else:
             await p.start(ctx)
 
-        # need to fix mentions -> turn into names. pass in ctx to the paginator probably to use converted
-        # need to make a more better paginator.
-
-        # This show duplicates. Need to remove duplicates
-
+    @staff()
+    @warns.command()
+    async def by(self, ctx:commands.Context, *,moderator:Optional[discord.User]):
+        """ Shows warnings by a moderator. """
 def setup(bot:RoUtils):
     bot.add_cog(Moderation(bot))
