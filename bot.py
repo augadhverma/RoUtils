@@ -30,13 +30,13 @@ from typing import Optional
 
 # Loads all the local environment variables
 from dotenv import load_dotenv
-load_dotenv() 
+load_dotenv()
 
 
-prefixes = (";",'.')
+prefixes = ('.',)
 
 os.environ["JISHAKU_NO_UNDERSCORE"] = "True"
-os.environ["JISHAKU_NO_DM_TRACEBACK"] = "True" 
+os.environ["JISHAKU_NO_DM_TRACEBACK"] = "True"
 os.environ["JISHAKU_HIDE"] = "True"
 
 extensions = (
@@ -103,7 +103,7 @@ class RoUtils(commands.Bot):
         member = guild.get_member(user_id=member_id)
         if member:
             return member
-        
+
         try:
             member = await guild.fetch_member(member_id=member_id)
         except discord.HTTPException:

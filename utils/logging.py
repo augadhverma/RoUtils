@@ -104,9 +104,10 @@ def infraction_embed(entry:InfractionEntry, offender:discord.User, type:str=None
 
         embed.set_footer(text="Infraction issued at")
         embed.set_thumbnail(url=offender.avatar_url)
-        delta = timedelta(seconds=entry.until-entry.time)
-        embed.add_field(name="Valid Until", value=str(humanize.precisedelta(delta)) if entry.until else '\U0000267e')
+        if entry.time and entry.until:
+            delta = timedelta(seconds=entry.until-entry.time)
+            embed.add_field(name="Valid Until", value=str(humanize.precisedelta(delta)) if entry.until else '\U0000267e')
 
-        
+
 
         return embed

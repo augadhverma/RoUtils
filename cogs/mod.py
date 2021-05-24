@@ -294,13 +294,50 @@ class Moderation(commands.Cog):
     @staff()
     @commands.command(aliases=['rw'])
     async def removewarn(self, ctx:commands.Context, id:int, *, reason:str):
-        pass
+        """Removes an infraction."""
+        infraction = await self.db.find_one_and_delete({'id':id})
+        if infraction:
+            entry = InfractionEntry(data=infraction)
+            user = self.bot.get_user(entry.offender_id)
+            if not user:
+                user = await self.bot.fetch_user(entry.offender_id)
+            embed = infraction_embed(entry=entry, offender=user)
+
+            embed.colour = discord.Colour.dark_grey()
+            embed.title = embed.title + " | Infraction Removed"
+            embed.add_field(name="Infraction Removed by", value=ctx.author.mention)
+            embed.add_field(name="Reason for Removal", value=reason, inline=False)
+
+            await ctx.send(content="Removed the Infraction:", embed=embed)
+
+            await post_log(ctx.guild, name='bot-logs', embed=embed)
+
+            try:
+                await user.send(f"Infraction with id {entry.id} of type {entry.type} issued for reason: *{entry.reason}* has been removed.")
+            except discord.Forbidden:
+                pass
+
+
+        else:
+            return await ctx.send("Cannot find an infraction with the given id.")
+
 
     @staff()
     @commands.command(aliases=['cw'])
     async def clearwarns(self, ctx:commands.Context, user:discord.User, *, reason:str):
-        pass
-    
+        container = []
+        pages = self.db.find({'offender':user.id})
+        deleted = await self.db.delete_many({'offender':user.id})
+        await ctx.send(f"Deleted `{deleted.deleted_count}` infractions.")
+        async for doc in pages:
+            container.append(doc)
+
+        try:
+            p = InfractionPages(entries=container, per_page=6, colour=discord.Colour.dark_grey())
+        except menus.MenuError as e:
+            await ctx.send(e)
+        else:
+            await p.start(ctx)
 
     @intern()
     @commands.command()
@@ -338,6 +375,21 @@ class Moderation(commands.Cog):
         await ctx.send(f"Successfully unbanned **{isbanned.user}**.\nPreviously banned for: {isbanned.reason}")
 
         # Needs to log and DM User
+
+    @intern()
+    @commands.command()
+    async def info(self, ctx:commands.Context, id:int):
+        """ Shows info of an infraction. """
+        infraction = await self.db.find_one({'id':id})
+        if infraction:
+            entry = InfractionEntry(data=infraction)
+            user = self.bot.get_user(entry.offender_id)
+            if not user:
+                user = await self.bot.fetch_user(entry.offender_id)
+            embed = infraction_embed(entry=entry, offender=user)
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send(f"Cannot find the infraction with id {id} in the databse.")
 
 def setup(bot:RoUtils):
     bot.add_cog(Moderation(bot))
