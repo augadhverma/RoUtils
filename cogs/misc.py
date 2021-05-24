@@ -24,7 +24,7 @@ import humanize
 
 from bot import RoUtils
 from discord.ext import commands
-from typing import Optional
+from typing import Optional, Union
 
 from utils.checks import admin, botchannel, intern
 from utils.paginator import jskpagination
@@ -77,7 +77,7 @@ class Miscellaneous(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message:discord.Message):
-        if message.channel.guild is None:
+        if isinstance(message.channel, discord.DMChannel):
             return
 
         if message.author.bot:
@@ -134,6 +134,15 @@ class Miscellaneous(commands.Cog):
         content = await self.bot.http.get_message(channel_id=channel_id, message_id=message_id)
 
         await jskpagination(ctx, str(content), wrap_on=(','))
+
+    @botchannel()
+    @commands.command(aliases=['get_id'])
+    async def getid(self, ctx:commands.Context, *, object:Union[discord.User, discord.Role, discord.TextChannel]):
+        """ Gives you id of a role, user or text channel """
+        try:
+            await ctx.send(f"`{object.id}`")
+        except commands.BadUnionArgument:
+            await ctx.send(f"Cannot get id for {object}")
         
 
 

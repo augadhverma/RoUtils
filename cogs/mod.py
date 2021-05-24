@@ -20,16 +20,18 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 import time
 import discord
 import humanize
+import string
+import random
 
-from typing import Optional
+from typing import Counter, Optional
 from discord.ext import commands, tasks, menus
 from bot import RoUtils
 
 from utils.utils import InfractionEntry, InfractionType
 from utils.db import MongoClient
-from utils.checks import staff, seniorstaff, intern
+from utils.checks import botchannel, staff, seniorstaff, intern
 from utils.logging import infraction_embed, post_log
-from utils.paginator import InfractionPages
+from utils.paginator import InfractionPages, SimpleInfractionPages
 
 class Moderation(commands.Cog):
     def __init__(self, bot:RoUtils):
@@ -83,7 +85,7 @@ class Moderation(commands.Cog):
             'id':await self.get_new_id()
         }
 
-        # await self.db.insert_one(document)
+        await self.db.insert_one(document)
         return InfractionEntry(data=document)
 
     @staff()
@@ -111,6 +113,18 @@ class Moderation(commands.Cog):
         await post_log(ctx.guild, name='bot-logs', embed=embed)
 
         await offender.send(embed=infraction_embed(entry=entry, offender=offender, show_mod=False))
+
+    @staff()
+    @commands.command()
+    async def spam(self, ctx:commands.Context, *, offender:discord.Member):
+        """ Warns a member for spamming. """
+        await ctx.invoke(self.warn, offender=offender, reason=f"For spamming in #{ctx.channel.name}")
+
+    @staff()
+    @commands.command()
+    async def bypass(self, ctx:commands.Context, *, offender:discord.Member):
+        """ Warns a member for bypassing chat filter. """
+        await ctx.invoke(self.warn, offender=offender, reason=f"For bypassing in #{ctx.channel.name}")
 
     @seniorstaff()
     @commands.command()
@@ -163,6 +177,7 @@ class Moderation(commands.Cog):
         await ctx.send(embed=embed)
         try:
             await offender.send(embed=infraction_embed(entry=entry, offender=offender, show_mod=False))
+            await offender.send("Ban Appeal Form: https://forms.gle/5nPGXqiReY7SEHwv8")
         except discord.HTTPException:
             pass
         await ctx.guild.ban(offender, reason=reason, delete_days=3)
@@ -221,5 +236,108 @@ class Moderation(commands.Cog):
     @warns.command()
     async def by(self, ctx:commands.Context, *,moderator:Optional[discord.User]):
         """ Shows warnings by a moderator. """
+        container = []
+        if moderator:
+            _all = self.db.find({'moderator':moderator.id})
+            async for doc in _all:
+                container.append(doc)
+            if container:
+                try:
+                    p = InfractionPages(container, per_page=6, show_mod=True)
+                except menus.MenuError as e:
+                    await ctx.send(e)
+                else:
+                    await p.start(ctx)
+            else:
+                await ctx.send("No infractions have been made by the given user.")
+        else:
+            mods = []
+            _all = self.db.find({})
+            async for inf in _all:
+                mods.append(inf['moderator'])
+            for mod, infs in Counter(mods).items():
+                container.append(f"<@{mod}> has made `{infs}` infractions.")
+
+            if container:
+                try:
+                    p = SimpleInfractionPages(container)
+                except menus.MenuError as e:
+                    await ctx.send(e)
+                else:
+                    await p.start(ctx)
+            else:
+                await ctx.send("No infractions have been made.")
+
+    @botchannel()
+    @commands.command()
+    async def mywarns(self, ctx:commands.Context):
+        """ Shows you your warns. """
+        await ctx.message.add_reaction("\U00002705")
+        try:
+            dm = await ctx.author.send("Sending you a list of your infractions.")
+        except discord.Forbidden:
+            return await ctx.send("I do not have the permissions to DM you!", delete_after=5.0)
+        pages = []
+        async for doc in self.db.find({'offender':ctx.author.id}):
+            pages.append(doc)
+
+        if pages:
+            try:
+                p = InfractionPages(pages, show_mod=False)
+            except menus.MenuError as e:
+                await ctx.send(e)
+            else:
+                await p.start(ctx, channel=dm.channel)
+        else:
+            await ctx.author.send("You don't have any active infractions.")
+
+    @staff()
+    @commands.command(aliases=['rw'])
+    async def removewarn(self, ctx:commands.Context, id:int, *, reason:str):
+        pass
+
+    @staff()
+    @commands.command(aliases=['cw'])
+    async def clearwarns(self, ctx:commands.Context, user:discord.User, *, reason:str):
+        pass
+    
+
+    @intern()
+    @commands.command()
+    async def nick(self, ctx:commands.Context, user:discord.Member, *, nick:str=None):
+        """ Changes a user's nickname. """
+        try:
+            await user.edit(nick=nick)
+            await ctx.message.add_reaction("\U00002705")
+        except discord.Forbidden:
+            await ctx.send("I do not have proper permissions to do that action!")
+
+    @intern()
+    @commands.command()
+    async def mod(self, ctx:commands.Context, *, user:discord.Member):
+        """ Changes a user's nickname to a Moderated Nickname. """
+        await ctx.invoke(self.nick, user=user, nick="Moderated Nickname "+"".join(random.sample(string.ascii_letters+string.digits, k=8)))
+
+    @seniorstaff()
+    @commands.command()
+    async def unban(self, ctx:commands.Context, user:discord.User, *, reason:str):
+        """ Unbans a user from the guild. """
+        try:
+            isbanned = await ctx.guild.fetch_ban(user)
+        except discord.NotFound:
+            await ctx.send("The given user is not banned.")
+
+        entry = self.create_infraction(
+            type=InfractionType.unban.value,
+            moderator=ctx.author,
+            offender=user,
+            reason=reason
+        )
+
+        await ctx.guild.unban(user, reason=reason+f" | Moderator: {ctx.author}")
+        await ctx.send(f"Successfully unbanned **{isbanned.user}**.\nPreviously banned for: {isbanned.reason}")
+
+        # Needs to log and DM User
+
 def setup(bot:RoUtils):
     bot.add_cog(Moderation(bot))

@@ -159,7 +159,7 @@ class InfractionPageEntry:
         self.offender = f"**Offender:** <@{entry['offender']}>"
         self.reason = f"**Reason:** {entry['reason']}"
         
-        if entry['until'] and entry['time']:
+        if entry.get('None', False) and entry.get('time', False):
             delta = datetime.timedelta(seconds=entry['until']-entry['time']) 
             self.until = humanize.precisedelta(delta)
             self.valid = f"**Valid Until:** {self.until}"
@@ -181,3 +181,7 @@ class InfractionPages(RoboPages):
     def __init__(self, entries, *, per_page=6, colour=discord.Colour.teal(), show_mod=True):
         converted = [(InfractionPageEntry(entry, show_mod).key, InfractionPageEntry(entry, show_mod).value) for entry in entries]
         super().__init__(FieldPageSource(converted, per_page=per_page, colour=colour))
+
+class SimpleInfractionPages(SimplePages):
+    def __init__(self, entries, *, per_page=8, colour=discord.Colour.teal()):
+        super().__init__(entries, per_page=per_page, colour=colour)
