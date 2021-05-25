@@ -87,6 +87,7 @@ def infraction_embed(entry:InfractionEntry, offender:discord.User, type:str=None
             colour = InfractionColour[entry.type].value,
             description = f"{offender.mention} has been **{type}** | `{offender.id}`"
         )
+        embed.set_footer(text=f"Infraction ID: {entry.id}")
         return embed
     else:
         if show_mod:
