@@ -26,13 +26,15 @@ import random
 
 from typing import Counter, Optional
 from discord.ext import commands, tasks, menus
+from datetime import datetime
 from bot import RoUtils
 
 from utils.utils import InfractionEntry, InfractionType
 from utils.db import MongoClient
 from utils.checks import botchannel, staff, seniorstaff, intern
 from utils.logging import infraction_embed, post_log
-from utils.paginator import InfractionPages, SimpleInfractionPages
+from utils.paginator import InfractionPages, SimpleInfractionPages, FieldPageSource, RoboPages
+from utils.time import human_time
 
 class Moderation(commands.Cog):
     def __init__(self, bot:RoUtils):
@@ -112,8 +114,10 @@ class Moderation(commands.Cog):
         embed = infraction_embed(entry=entry, offender=offender)
 
         await post_log(ctx.guild, name='bot-logs', embed=embed)
-
-        await offender.send(embed=infraction_embed(entry=entry, offender=offender, show_mod=False))
+        try:
+            await offender.send(embed=infraction_embed(entry=entry, offender=offender, show_mod=False))
+        except discord.HTTPException:
+            pass
 
     @staff()
     @commands.command()
@@ -346,6 +350,16 @@ class Moderation(commands.Cog):
 
             await ctx.send(f"Successfully deleted {deleted.deleted_count} infraction for the given user.")
 
+            embed = discord.Embed(
+                title = "ALL INFRACTIONS REMOVED",
+                colour = discord.Colour.dark_grey(),
+                timestamp = datetime.utcnow()
+            )
+            embed.add_field(name='Removed by', value=f"{ctx.author.mention} `({ctx.author.id})`", inline=False)
+            embed.add_field(name='Reason for Removal', value=reason, inline=False)
+            embed.description = f"Removed {deleted.deleted_count} infractions for {user.mention} `({user.id})`"
+            await post_log(ctx.guild, name='bot-logs', embed=embed)
+
     @intern()
     @commands.command()
     async def nick(self, ctx:commands.Context, user:discord.Member, *, nick:str=None):
@@ -404,6 +418,53 @@ class Moderation(commands.Cog):
             await ctx.send(embed=embed)
         else:
             await ctx.send(f"Cannot find the infraction with id {id} in the databse.")
+
+    @staff()
+    @commands.group(invoke_without_command=True, aliases=['guildbans'])
+    async def bans(self, ctx:commands.Context, *, user:Optional[discord.User]):
+        """ Shows all the bans in the server. """
+        converted = []
+        if not user:
+            bans = await ctx.guild.bans()
+            for ban in bans:
+                converted.append((f"User: {ban.user}", f"Reason: {ban.reason or 'None provided...'}"))
+        else:
+            async for entry in ctx.guild.audit_logs(action=discord.AuditLogAction.ban):
+                if entry.target.id == user.id:
+                    converted.append(
+                        (f"ID: {entry.id} | Moderator: {entry.user}",
+                         f"Reason: {entry.reason or 'None provided...'}\nCreated At: {human_time(dt=entry.created_at, minimum_unit='minutes')}")
+                    )
+        if converted:
+            try:
+                p = RoboPages(FieldPageSource(converted, per_page=6))
+            except menus.MenuError as e:
+                await ctx.send(e)
+            else:
+                await p.start(ctx)
+        else:
+            await ctx.send("No bans to show.")
+
+
+    @staff()
+    @bans.command()
+    async def by(self, ctx:commands.Context, moderator:discord.User):
+        """ Bans made by a moderator. """
+        converted = []
+        async for entry in ctx.guild.audit_logs(action=discord.AuditLogAction.ban, user=moderator):
+            converted.append(
+                (f"ID: {entry.id} | User: {entry.target}",
+                 f"Reason: {entry.reason or 'None provided...'}\nCreated At: {human_time(dt=entry.created_at, minimum_unit='minutes')}")
+            )
+        if converted:
+            try:
+                p = RoboPages(FieldPageSource(converted, per_page=6))
+            except menus.MenuError as e:
+                await ctx.send(e)
+            else:
+                await p.start(ctx)
+        else:
+            await ctx.send("No bans to show.")
 
 def setup(bot:RoUtils):
     bot.add_cog(Moderation(bot))
