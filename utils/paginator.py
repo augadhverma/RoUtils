@@ -114,12 +114,11 @@ class InfractionPageSource(menus.ListPageSource):
         self.show_mod = show_mod
 
     async def format_page(self, menu, entries:List[InfractionEntry]):
-
+        menu.embed.clear_fields()
         maximum = self.get_max_pages()
         if maximum > 1:
             footer = f'Page {menu.current_page + 1}/{maximum} ({len(self.entries)} entries)'
             menu.embed.set_footer(text=footer)
-        menu.embed.title = f"Total Infractions: {self.total_entries}"
         for entry in entries:
             if self.show_mod:
                 mod = f"**Moderator:** <@{entry.mod_id}> `({entry.mod_id})`\n"
@@ -129,7 +128,8 @@ class InfractionPageSource(menus.ListPageSource):
                 name=f"#{entry.id} | {entry.type}",
                 value=f"{mod}"\
                       f"**Offender:** <@{entry.offender_id}> `({entry.offender_id})`\n"\
-                      f"**Reason:** {entry.reason}"
+                      f"**Reason:** {entry.reason}",
+                inline=False
             )
 
         return menu.embed
