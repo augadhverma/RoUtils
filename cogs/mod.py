@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
+import asyncio
 import time
 import discord
 import humanize
@@ -180,7 +181,7 @@ class Moderation(commands.Cog):
             await offender.send("Ban Appeal Form: https://forms.gle/5nPGXqiReY7SEHwv8")
         except discord.HTTPException:
             pass
-        await ctx.guild.ban(offender, reason=reason, delete_days=3)
+        await ctx.guild.ban(offender, reason=reason, delete_message_days =3)
 
         embed = infraction_embed(entry=entry, offender=offender)
 
@@ -325,19 +326,25 @@ class Moderation(commands.Cog):
     @staff()
     @commands.command(aliases=['cw'])
     async def clearwarns(self, ctx:commands.Context, user:discord.User, *, reason:str):
-        container = []
-        pages = self.db.find({'offender':user.id})
-        deleted = await self.db.delete_many({'offender':user.id})
-        await ctx.send(f"Deleted `{deleted.deleted_count}` infractions.")
-        async for doc in pages:
-            container.append(doc)
+        await ctx.invoke(self.warns, user=user)
+
+        def check(msg:discord.Message) -> bool:
+            author = msg.author == ctx.author
+            channel = msg.channel == ctx.channel
+            answer = msg.content.lower() in ('yes', 'y')
+
+            return author and channel and answer
+
+        await ctx.send("Are you sure you want to delete all the infractions for the given user? Say `yes` if you want to.")
 
         try:
-            p = InfractionPages(entries=container, per_page=6, colour=discord.Colour.dark_grey())
-        except menus.MenuError as e:
-            await ctx.send(e)
+            message = await self.bot.wait_for('message', timeout=15.0, check=check)
+        except asyncio.TimeoutError:
+            return await ctx.send("Timeout Reached! Aborting...")
         else:
-            await p.start(ctx)
+            deleted = await self.db.delete_many({'offender':user.id})
+
+            await ctx.send(f"Successfully deleted {deleted.deleted_count} infraction for the given user.")
 
     @intern()
     @commands.command()
@@ -364,7 +371,7 @@ class Moderation(commands.Cog):
         except discord.NotFound:
             await ctx.send("The given user is not banned.")
 
-        entry = self.create_infraction(
+        entry = await self.create_infraction(
             type=InfractionType.unban.value,
             moderator=ctx.author,
             offender=user,
@@ -372,12 +379,19 @@ class Moderation(commands.Cog):
         )
 
         await ctx.guild.unban(user, reason=reason+f" | Moderator: {ctx.author}")
-        await ctx.send(f"Successfully unbanned **{isbanned.user}**.\nPreviously banned for: {isbanned.reason}")
 
-        # Needs to log and DM User
+        embed = infraction_embed(entry=entry, offender=user, type="unbanned", small=True)
+        embed.add_field(name="Previously banned for", value=isbanned.reason if isbanned.reason else 'No reason given.')
+
+        await ctx.send(embed=embed)
+
+        embed = infraction_embed(entry, user)
+        embed.add_field(name="Previously banned for", value=isbanned.reason if isbanned.reason else 'No reason given.')
+
+        await post_log(ctx.guild, name='bot-logs', embed=embed)
 
     @intern()
-    @commands.command()
+    @commands.command(aliases=['modlog'])
     async def info(self, ctx:commands.Context, id:int):
         """ Shows info of an infraction. """
         infraction = await self.db.find_one({'id':id})
