@@ -106,6 +106,29 @@ class SimplePageSource(menus.ListPageSource):
         menu.embed.description = '\n'.join(pages)
         return menu.embed
 
+class FieldPageSource(menus.ListPageSource):
+    """A page source that requires (field_name, field_value) tuple items."""
+
+    def __init__(self, entries, *, per_page=12, colour=discord.Colour.blurple()):
+        super().__init__(entries, per_page=per_page)
+        self.embed = discord.Embed(colour=colour)
+
+    async def format_page(self, menu, entries):
+        self.embed.clear_fields()
+        self.embed.description = discord.Embed.Empty
+
+        for key, value in entries:
+            self.embed.add_field(name=key, value=value, inline=False)
+
+        maximum = self.get_max_pages()
+        if maximum > 1:
+            text = (
+                f"Page {menu.current_page + 1}/{maximum} ({len(self.entries)} entries)"
+            )
+            self.embed.set_footer(text=text)
+
+        return self.embed
+
 class InfractionPageSource(menus.ListPageSource):
     def __init__(self, entries, *, per_page=6, show_mod=True):
         super().__init__(entries, per_page=per_page)
