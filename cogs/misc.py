@@ -98,7 +98,7 @@ class Miscellaneous(commands.Cog):
                 pass
             else:
                 await message.channel.send(f"{message.author.mention}, {user.name} has been AFK for {humanize.naturaldelta(dt.timedelta(seconds=time.time() - afked[0]))} with reason: {afked[1]}")
-        
+
     @botchannel()
     @commands.command()
     async def ping(self, ctx:commands.Context):
@@ -119,6 +119,21 @@ class Miscellaneous(commands.Cog):
         embed.add_field(
             name="<:stab:828715097407881216> | Websocket",
             value=f"`{(self.bot.latency*1000):.2f}ms`"
+        )
+
+        tag_s = time.perf_counter()
+        await self.bot.tag_db.count_documents({})
+        tag_e = time.perf_counter()
+        tag = (tag_e - tag_s)*1000
+
+        mod_s = time.perf_counter()
+        await self.bot.mod_db.count_documents({})
+        mod_e = time.perf_counter()
+        mod = (mod_e - mod_s)*1000
+
+        embed.add_field(
+            name='<:mongo:814706574928379914> | Database Connections',
+            value=f'**Tags:** `{tag:.2f}ms` | **Moderation:** `{mod:.2f}ms`'
         )
 
         await m.edit(content=None, embed=embed)
@@ -143,7 +158,7 @@ class Miscellaneous(commands.Cog):
             await ctx.send(f"`{object.id}`")
         except commands.BadUnionArgument:
             await ctx.send(f"Cannot get id for {object}")
-        
+
 
 
 def setup(bot:RoUtils):
