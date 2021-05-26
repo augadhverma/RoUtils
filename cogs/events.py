@@ -34,7 +34,7 @@ class Events(commands.Cog):
     def __init__(self, bot: RoUtils):
         self.bot = bot
 
-    
+
     async def mod_nick(self, m:discord.Member) -> None:
         string = """abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!"#$%&'()*+,-./:;<=>?@[]^_`{|}~"""
 
@@ -74,7 +74,7 @@ class Events(commands.Cog):
                 name='Attachments',
                 value=', '.join(f'{a.filename} ({a.content_type})' for a in message.attachments)
             )
-        
+
         embed.set_footer(text="Deleted At")
         embed.set_author(name=str(message.author), icon_url=message.author.avatar_url)
 
@@ -103,7 +103,7 @@ class Events(commands.Cog):
             return
 
         if before.author.bot:
-            return 
+            return
 
         if before.content != after.content:
             embed = discord.Embed(
@@ -113,7 +113,7 @@ class Events(commands.Cog):
                 description = f'Channel: {before.channel.mention} | [Message]({after.jump_url})'
             )
             embed.set_footer(text='Edited At')
-            
+
             embed.add_field(name='Before', value=before.content, inline=False)
             embed.add_field(name='After', value=after.content, inline=False)
 
@@ -181,6 +181,8 @@ class Events(commands.Cog):
                 colour = discord.Colour.blue(),
                 timestamp = datetime.utcnow(),
             )
+            embed.set_author(name=str(after), icon_url=after.avatar_url)
+            
 
             temp = list(set(before.roles + after.roles))
             added = []
@@ -216,7 +218,7 @@ class Events(commands.Cog):
         )
 
         embed.set_author(name=str(user), icon_url=user.avatar_url)
-            
+
         await post_log(guild=guild, name="bot-logs", embed=embed)
 
     @commands.Cog.listener()
@@ -236,7 +238,7 @@ class Events(commands.Cog):
         )
 
         embed.set_author(name=str(user), icon_url=user.avatar_url)
-            
+
         await post_log(guild=guild, name="bot-logs", embed=embed)
 
         await post_log(guild=guild, name="bot-logs", embed=embed)
