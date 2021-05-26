@@ -104,7 +104,8 @@ class Moderation(commands.Cog):
             type=InfractionType.warn.value,
             moderator=ctx.author,
             offender=offender,
-            reason=reason
+            reason=reason,
+            until=time.time() + 20
         )
 
         embed = infraction_embed(entry=entry, offender=offender, type="warned", small=True)
@@ -222,11 +223,19 @@ class Moderation(commands.Cog):
         if user:
             _all = self.db.find({'offender':user.id})
             async for doc in _all:
-                pages.append(doc)
+                if doc.get('until', 1420070400000) > time.time():
+                    await self.db.delete_one({'id':doc['id']})
+
+                else:
+                    pages.append(doc)
         else:
             _all = self.db.find({})
             async for doc in _all:
-                pages.append(doc)
+                if doc.get('until', 1420070400000) > time.time():
+                    await self.db.delete_one({'id':doc['id']})
+
+                else:
+                    pages.append(doc)
         if not pages:
             return await ctx.send("No warns to show.")
 
@@ -278,13 +287,17 @@ class Moderation(commands.Cog):
     async def mywarns(self, ctx:commands.Context):
         """ Shows you your warns. """
         await ctx.message.add_reaction("\U00002705")
+        to_delete = []
         try:
             dm = await ctx.author.send("Sending you a list of your infractions.")
         except discord.Forbidden:
             return await ctx.send("I do not have the permissions to DM you!", delete_after=5.0)
         pages = []
         async for doc in self.db.find({'offender':ctx.author.id}):
-            pages.append(doc)
+            if doc.get('until', 1420070400000) > time.time():
+                await self.db.delete_one({'id':doc['id']})
+            else:
+                pages.append(doc)
 
         if pages:
             try:
@@ -294,7 +307,7 @@ class Moderation(commands.Cog):
             else:
                 await p.start(ctx, channel=dm.channel)
         else:
-            await ctx.author.send("You don't have any active infractions.")
+            await ctx.author.send("You don't have any active infractions.")              
 
     @staff()
     @commands.command(aliases=['rw'])
