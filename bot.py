@@ -71,6 +71,11 @@ class RoUtils(commands.Bot):
         self.loop.create_task(self.create_session())
         self.version = "1.1.0b"
 
+        if not hasattr(self, 'mod_db'):
+            self.mod_db = MongoClient(db="Utilities", collection="Infractions")
+        if not hasattr(self, 'tag_db'):
+            self.tag_db = MongoClient(db="Utilities", collection="Tags")
+
         for cog in extensions:
             cog:str
             try:
@@ -85,6 +90,7 @@ class RoUtils(commands.Bot):
         await self.wait_until_ready()
         if not hasattr(self, "session"):
             self.session = aiohttp.ClientSession()
+
 
     async def get_or_fetch_member(self, guild:discord.Guild, member_id:int) -> Optional[discord.Member]:
         """Gets a member from the cache, if not found in cache, makes an API call. If the member is not found, `None` is returned.
