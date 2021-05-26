@@ -37,8 +37,8 @@ class Tags(commands.Cog):
     def __init__(self, bot:RoUtils):
         self.bot = bot
         self._cache = dict()
-        self.db = MongoClient(db="Utilities", collection="Tags")
-    
+        self.db = bot.tag_db
+
     def replied_reference(self, message):
         ref = message.reference
         if ref and isinstance(ref.resolved, discord.Message):
@@ -52,7 +52,7 @@ class Tags(commands.Cog):
             if document is None:
                 raise TagNotFound(f"Tag with name '{name}' couldn't be found in the database.")
             tag = TagEntry(data=document)
-            
+
 
         if isinstance(tag, TagEntry):
             data = tag.raw
@@ -65,7 +65,7 @@ class Tags(commands.Cog):
             self._cache[tag.name] = tag
 
         return tag
-            
+
     async def create_tag(self, user:discord.User, name:str, content) -> bool:
         created = datetime.utcnow()
         document = {
@@ -185,7 +185,7 @@ class Tags(commands.Cog):
     async def cache(self, ctx:commands.Context):
         """ Shows the internal Cache. """
         await jskpagination(ctx, str(self._cache))
-        
+
 
     @botchannel()
     @tag.command()
@@ -196,7 +196,7 @@ class Tags(commands.Cog):
             await self.db.delete_one({'name':name})
             del self._cache[name]
             return await ctx.send('Succesfully deleted the tag!')
-        
+
         elif tag.owner_id in ADMINS:
             return await ctx.send('Cannot delete a tag made by another admin.')
 
