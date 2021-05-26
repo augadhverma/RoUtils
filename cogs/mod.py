@@ -154,7 +154,7 @@ class Moderation(commands.Cog):
         except discord.HTTPException:
             pass
         try:
-            await offender.kick(reason=reason)
+            await offender.kick(reason=reason + f" | Moderator: {ctx.author}")
         except discord.Forbidden:
             await ctx.send("Cannot Kick This User •.•")
 
@@ -185,7 +185,7 @@ class Moderation(commands.Cog):
             await offender.send("Ban Appeal Form: https://forms.gle/5nPGXqiReY7SEHwv8")
         except discord.HTTPException:
             pass
-        await ctx.guild.ban(offender, reason=reason, delete_message_days =3)
+        await ctx.guild.ban(offender, reason=reason + f" | Moderator: {ctx.author}", delete_message_days =3)
 
         embed = infraction_embed(entry=entry, offender=offender)
 
@@ -319,7 +319,7 @@ class Moderation(commands.Cog):
 
             try:
                 await user.send(f"Infraction with id {entry.id} of type {entry.type} issued for reason: *{entry.reason}* has been removed.")
-            except discord.Forbidden:
+            except discord.HTTPException:
                 pass
 
 
@@ -465,6 +465,143 @@ class Moderation(commands.Cog):
                 await p.start(ctx)
         else:
             await ctx.send("No bans to show.")
+
+    async def do_removal(self, ctx:commands.Context, limit:int, predicate, *, before=None, after=None):
+        if limit > 2000:
+            return await ctx.send(f"To many messages to search given ({limit}/2000)")
+
+        if before is None:
+            before = ctx.message
+        else:
+            before = discord.Object(id=before)
+
+        if after is not None:
+            after = discord.Object(id=after)
+
+        try:
+            deleted = await ctx.channel.purge(
+                limit=limit, before=before, after=after, check=predicate
+            )
+        except discord.Forbidden:
+            return await ctx.send("I do not have proper permissions to delete messages.")
+        except discord.HTTPException as e:
+            return await ctx.send(f"Error: {e} (try a smaller search?)")
+
+        spammers = Counter(m.author.display_name for m in deleted)
+        deleted = len(deleted)
+        messages = [f'{deleted} message{" was" if deleted == 1 else "s were"} removed.']
+        if deleted:
+            messages.append('')
+            spammers = sorted(spammers.items(), key=lambda t:t[1], reverse=True)
+            messages.extend(f'**{name}**: {count}' for name, count in spammers)
+
+        to_send = '\n'.join(messages)
+
+        if len(to_send) > 2000:
+            await ctx.send(f'Successfully removed {deleted} messages', delete_after=10.0)
+        else:
+            await ctx.send(to_send, delete_after=10.0)
+
+        await ctx.message.delete()
+
+    @staff()
+    @commands.group(invoke_without_command=True, aliases=['remove'])
+    async def purge(self, ctx:commands.Context, member:Optional[discord.Member], search:Optional[int]):
+        """ Removes messages that meet a certain criteria.
+        
+        After the commmand has been executed, you will get
+        a message detailing which users got removed and how
+        many messages got removed.
+        """
+        if not member and not search and ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+        else:
+            if member:
+                await ctx.invoke(self.user, member=member, search=search)
+            elif search:
+                await ctx.invoke(self._remove_all, search=search)
+
+    @staff()
+    @purge.command()
+    async def embeds(self, ctx:commands.Context, search=100):
+        """Removes messages that have embeds in them."""
+        await self.do_removal(ctx, search, lambda e: len(e.embeds))
+
+    @staff()
+    @purge.command()
+    async def files(self, ctx:commands.Context, search=100):
+        """Removes messages that have attachments in them."""
+        await self.do_removal(ctx, search, lambda e: len(e.attachments))
+
+    @staff()
+    @purge.command()
+    async def images(self, ctx:commands.Context, search=100):
+        """Removes messages that have images in them."""
+        await self.do_removal(ctx, search, lambda e: len(e.embeds) or len(e.attachments))
+
+    @staff()
+    @purge.command(name='all')
+    async def _remove_all(self, ctx:commands.Context, search=100):
+        """Removes all messages."""
+        await self.do_removal(ctx, search, lambda e: True)
+
+    @staff()
+    @purge.command(aliases=['member'])
+    async def user(self, ctx:commands.Context, member:discord.Member, search=100):
+        """Removes messages from a user."""
+        await self.do_removal(ctx, search, lambda e: e.author == member)
+
+    @staff()
+    @purge.command()
+    async def contains(self, ctx:commands.Context, *, substr:str):
+        """Removes messags that contain a string.
+        
+        The string to search should be atleast 3 characters long."""
+        await self.do_removal(ctx, 100, lambda e: substr in e.content)
+
+    @staff()
+    @purge.command(name='bot')
+    async def _bot(self, ctx:commands.Context, prefix=None, search=100):
+        """Removes messages by a bot with their optional prefix."""
+        def pred(m):
+            return (m.webhook_id is None and m.author.bot) or (prefix and m.content.startswith(prefix))
+
+        await self.do_removal(ctx, search, pred)
+
+    @intern()
+    @commands.command()
+    async def cleanup(self, ctx:commands.Context, search=100):
+        """Cleans up my messages."""
+        await self.do_removal(ctx, search, lambda e: e.author == ctx.bot.user)
+
+    @seniorstaff()
+    @commands.command()
+    async def softban(self, ctx:commands.Context, offender:discord.Member, *, reason:str):
+        """Bans and immediately unbans a user from the server."""
+        await ctx.message.delete()
+
+        if not self.hierarchy_check(ctx.author, offender):
+            return await ctx.send('You cannot perform that action due to the hierarchy.')
+
+        entry = await self.create_infraction(
+            type=InfractionType.softban.value,
+            moderator=ctx.author,
+            offender=offender,
+            reason=reason
+        )
+
+        embed = infraction_embed(entry, offender, 'softbanned', small=True)
+        await ctx.send(embed=embed)
+
+        try:
+            await offender.send(embed=infraction_embed(entry, offender, show_mod=False))
+        except discord.HTTPException:
+            pass
+
+        await ctx.guild.ban(offender, reason=reason + f" | Moderator: {ctx.author}", delete_message_days=3)
+        await ctx.guild.unban(offender, reason=reason + f" | Moderator: {ctx.author}")
+
+        await post_log(ctx.guild, name='bot-logs', embed=infraction_embed(entry, offender))
 
 def setup(bot:RoUtils):
     bot.add_cog(Moderation(bot))
