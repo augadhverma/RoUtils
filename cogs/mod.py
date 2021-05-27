@@ -104,6 +104,22 @@ class Moderation(commands.Cog):
             return doc
         else:
             if (until is not None) and (until <= time.time()):
+                if doc['type'] == 1 or doc['type'] == 3:
+                    guild = self.bot.get_guild(576325772629901312)
+                    if guild is None:
+                        guild = await self.bot.fetch_guild(576325772629901312)
+
+                    role = guild.get_role(624302931130187808)
+                    if role:
+                        member = guild.get_member(doc['offender'])
+                        if not member:
+                            member = await guild.fetch_member(doc['offender'])
+                        if member:
+                            try:
+                                await member.remove_roles(role)
+                            except:
+                                pass
+
                 try:
                     await self.db.delete_one({'_id':doc['_id']})
                 except Exception as e:
@@ -111,6 +127,33 @@ class Moderation(commands.Cog):
                 return None
             else:
                 return doc
+
+    # Need to add to warn commands.
+    async def count_infractions(self, user:discord.Member):
+        count = await self.db.count_documents({'offender':user.id})
+
+        guild = self.bot.get_guild(576325772629901312)
+        if guild is None:
+            guild = await self.bot.fetch_guild(576325772629901312)
+
+        if count >= 5:
+            member = guild.get_member(doc['id'])
+            if not member:
+                member = await guild.fetch_member(doc['offender'])
+
+            await member.kick(reason=f'User reached {count} infractions. | Autokick')
+        elif count >= 3:
+            member = guild.get_member(doc['offender'])
+            if not member:
+                member = await guild.fetch_member(doc['offender'])
+
+            role = guild.get_role(624302931130187808)
+
+            if member:
+                try:
+                    await member.add_roles(role)
+                except:
+                    pass
 
     @staff()
     @commands.command()
@@ -632,8 +675,8 @@ class Moderation(commands.Cog):
         await post_log(ctx.guild, name='bot-logs', embed=infraction_embed(entry, offender))
 
     @staff()
-    @commands.command(hidden=True)
-    async def m(self, ctx:commands.Context, offender:discord.Member, Time:TimeConverter, *, reason:str):
+    @commands.command(aliases=['m'])
+    async def mute(self, ctx:commands.Context, offender:discord.Member, Time:TimeConverter, *, reason:str):
         """Mutes a user for a specified period of time.
         Valid formats are 2d 10h 3m 2s."""
         await ctx.message.delete()
@@ -673,14 +716,6 @@ class Moderation(commands.Cog):
             await offender.remove_roles(role)
 
     @staff()
-    @commands.command()
-    async def mute(self, ctx:commands.Context, offender:discord.Member, *, reason:str):
-        """Mutes a user for a specified period of time.
-        Valid formats are 2d 10h 3m 2s."""
-
-        await ctx.invoke(self.m, offender=offender, Time='3h', reason=reason)
-
-    @staff()
     @commands.command(hidden=True)
     async def unmute(self, ctx:commands.Context, offender:discord.Member):
         """Unmutes a user. """
@@ -696,36 +731,8 @@ class Moderation(commands.Cog):
     @tasks.loop(minutes=5.0)
     async def infraction_check(self):
         infractions = self.db.find({})
-
-        guild = self.bot.get_guild(576325772629901312)
-        if guild is None:
-            guild = await self.bot.fetch_guild(576325772629901312)
-
-        role = guild.get_role(624302931130187808)
-        if role is None:
-            role = discord.utils.get(guild.roles, id=624302931130187808)
-
         async for doc in infractions:
-            if doc['type'] == 1 or doc['type'] == 3:
-                until = doc.get('until', None)
-                if until:
-                    if until <= time.time():
-                        try:
-                            await self.db.delete_one({'_id':doc['_id']})
-                        except Exception as e:
-                            print(e)
-
-                        member = guild.get_member(doc['offender'])
-                        if not member:
-                            member = await guild.fetch_member(doc['offender'])
-
-                        try:
-                            await member.remove_roles(role)
-                        except Exception as e:
-                            print(e)
-
-            else:
-                await self.delete_infraction(doc)
+            await self.delete_infraction(doc)
 
     @infraction_check.before_loop
     async def before_infraction_check(self):
