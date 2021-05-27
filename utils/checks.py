@@ -19,50 +19,68 @@ BOTCHANNEL = 678198477108543518
 
 def admin():
     async def pred(ctx:commands.Context):
-        roles = [r.id for r in ctx.author.roles]
         if await ctx.bot.is_owner(ctx.author):
             return True
-        elif (MANAGEMENT in roles) or (COUNCIL in roles):
-            return True
+        try:
+            roles = [r.id for r in ctx.author.roles]
+        except AttributeError:
+            return False
         else:
-            raise NotAdmin(f"{ctx.author} is not an admin.")
+            if (MANAGEMENT in roles) or (COUNCIL in roles):
+                return True
+            else:
+                raise NotAdmin(f"{ctx.author} is not an admin.")
     return commands.check(pred)
 
 def seniorstaff():
     async def pred(ctx:commands.Context):
-        roles = [r.id for r in ctx.author.roles]
         if await ctx.bot.is_owner(ctx.author):
             return True
-        elif (MANAGEMENT in roles) or (COUNCIL in roles) or (SENIORSTAFF in roles):
-            return True
+        try:
+            roles = [r.id for r in ctx.author.roles]
+        except AttributeError:
+            return False
         else:
-            raise NotStaff(f"{ctx.author} is not a senior staff member.")
-    return commands.check(pred) 
+            if (MANAGEMENT in roles) or (COUNCIL in roles) or (SENIORSTAFF in roles):
+                return True
+            else:
+                raise NotStaff(f"{ctx.author} is not a senior staff member.")
+    return commands.check(pred)
 
 def staff():
     async def pred(ctx:commands.Context):
-        roles = [r.id for r in ctx.author.roles]
         if await ctx.bot.is_owner(ctx.author):
             return True
-        elif (MANAGEMENT in roles) or (COUNCIL in roles) or (SENIORSTAFF in roles) or (STAFF in roles):
-            return True
+        try:
+            roles = [r.id for r in ctx.author.roles]
+        except AttributeError:
+            return False
         else:
-            raise NotStaff(f"{ctx.author} is not a staff member.")
+            if (MANAGEMENT in roles) or (COUNCIL in roles) or (SENIORSTAFF in roles) or (STAFF in roles):
+                return True
+            else:
+                raise NotStaff(f"{ctx.author} is not a staff member.")
     return commands.check(pred)
 
 def intern():
     async def pred(ctx:commands.Context):
-        roles = [r.id for r in ctx.author.roles]
         if await ctx.bot.is_owner(ctx.author):
             return True
-        elif (MANAGEMENT in roles) or (COUNCIL in roles) or (SENIORSTAFF in roles) or (STAFF in roles) or (INTERN in roles):
-            return True
+        try:
+            roles = [r.id for r in ctx.author.roles]
+        except AttributeError:
+            return False
         else:
-            raise NotStaff(f"{ctx.author} is not a staff member.")
+            if (MANAGEMENT in roles) or (COUNCIL in roles) or (SENIORSTAFF in roles) or (STAFF in roles) or (INTERN in roles):
+                return True
+            else:
+                raise NotStaff(f"{ctx.author} is not a staff member.")
     return commands.check(pred)
 
 def botchannel():
     async def pred(ctx:commands.Context):
+        if ctx.guild is None:
+            return True
         roles = [r.id for r in ctx.author.roles]
         if await ctx.bot.is_owner(ctx.author):
             return True
