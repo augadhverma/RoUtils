@@ -129,31 +129,37 @@ class Moderation(commands.Cog):
                 return doc
 
     # Need to add to warn commands.
-    async def count_infractions(self, user:discord.Member):
+    async def count_documents(self, user:discord.Member):
         count = await self.db.count_documents({'offender':user.id})
-
-        guild = self.bot.get_guild(576325772629901312)
-        if guild is None:
-            guild = await self.bot.fetch_guild(576325772629901312)
-
+        guild:discord.Guild = user.guild
         if count >= 5:
-            member = guild.get_member(doc['id'])
-            if not member:
-                member = await guild.fetch_member(doc['offender'])
+            entry = await self.create_infraction(
+                type = InfractionType.kick.value,
+                moderator = self.bot.user,
+                offender = user,
+                reason = f"Auto kick for reaching {count} infractions."
+            )
 
-            await member.kick(reason=f'User reached {count} infractions. | Autokick')
+            embed = infraction_embed(entry, user)
+            await post_log(guild, name='bot-logs', embed=embed)
+
         elif count >= 3:
-            member = guild.get_member(doc['offender'])
-            if not member:
-                member = await guild.fetch_member(doc['offender'])
+            entry = await self.create_infraction(
+                type = InfractionType.mute.value,
+                moderator = self.bot.user,
+                offender = user,
+                reason = f"Auto mute for reaching {count} infractions."
+            )
 
             role = guild.get_role(624302931130187808)
 
-            if member:
-                try:
-                    await member.add_roles(role)
-                except:
-                    pass
+            try:
+                await user.add_roles(role)
+            except:
+                pass
+
+            embed = infraction_embed(entry, user)
+            await post_log(guild, name='bot-logs', embed=embed)
 
     @staff()
     @commands.command()
@@ -169,7 +175,7 @@ class Moderation(commands.Cog):
             moderator=ctx.author,
             offender=offender,
             reason=reason,
-            until=time.time() + 20
+            until=time.time()
         )
 
         embed = infraction_embed(entry=entry, offender=offender, type="warned", small=True)
@@ -183,6 +189,8 @@ class Moderation(commands.Cog):
             await offender.send(embed=infraction_embed(entry=entry, offender=offender, show_mod=False))
         except discord.HTTPException:
             pass
+
+        await self.count_documents(offender)
 
     @staff()
     @commands.command()
@@ -723,7 +731,7 @@ class Moderation(commands.Cog):
         if role is None:
             role = discord.utils.get(ctx.guild.roles, id=624302931130187808)
 
-        if role in offener.roles:
+        if role in offender.roles:
             await offender.remove_roles(role)
         else:
             await ctx.send('The given user is not muted.')
