@@ -163,7 +163,12 @@ class Miscellaneous(commands.Cog):
     @commands.command()
     async def news(self, ctx:commands.Context):
         """ Shows Bot News and Feature plans. """
-        news = f"The"
+        news = "The bot is currently in development mode. New features are being added "\
+               "to it constantly. The current working features are: "\
+               "`AFK Feature`, `Tags Handling`, `Userinfo (Roblox and Discord)`, `Moderation Stuff`\n\n"\
+               "The features being worked on are: `Automoderation`, `Ticket Handling System`.\n"\
+               "I plan on updating the bot as soon the Moderation Features are done with its testing phase, "\
+               "and this is also when RoUtils will go open source."
 
         date = dt.datetime.utcnow().strftime('%B %d, %Y')
 
