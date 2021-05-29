@@ -94,8 +94,10 @@ class Events(commands.Cog):
         )
 
         embed.set_footer(text=f'{len(deleted)} messages are shown')
-
-        await post_log(dummy.guild, name='bot-logs', embed=embed)
+        try:
+            await post_log(dummy.guild, name='bot-logs', embed=embed)
+        except discord.HTTPException:
+            await post_log(dummy.guild, name='bot-logs', content=f"{len(L)} messages were deleted in #{dummy.channel}. Cannot show messages, too long to send.")
 
     @commands.Cog.listener()
     async def on_message_edit(self, before:discord.Message, after:discord.Message):
