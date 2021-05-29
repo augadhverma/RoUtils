@@ -31,16 +31,25 @@ class Config(commands.Cog):
     async def reload(self, ctx:commands.Cog, *,name:str):
         """ reloads a/all file(s). """
         if name == '~':
+            ext = []
             for f in extensions:
                 try:
                     self.bot.reload_extension(f)
+                    ext.append(f)
+                    print(f'Reloaded {f}')
                 except Exception as e:
                     await ctx.send(f'```py\n{e}```')
-            return await ctx.reply('Reloaded extensions.')
+            embed = discord.Embed(
+                title="Successfully reloaded the following extensions:",
+                description = "\n".join(e for e in ext),
+                colour = self.bot.invisible_colour
+            )
+            return await ctx.reply(embed=embed)
 
         else:
             try:
                 self.bot.reload_extension(f"{name}")
+                print(f'Reloaded {name}')
             except Exception as e:
                 return await ctx.send(f"```py\n{e}```")
             await ctx.reply(f"Successfully reloaded: **`{name.replace('.','/')}.py`**")
@@ -51,6 +60,7 @@ class Config(commands.Cog):
         """Loads a cog."""
         try:
             self.bot.load_extension(f"{name}")
+            print(f'Loaded {name}')
         except Exception as e:
             return await ctx.send(f"```py\n{e}```")
         await ctx.send(f"📥 Loaded extension: **`{name.replace('.','/')}.py`**")
@@ -61,6 +71,7 @@ class Config(commands.Cog):
         """Unloads a cog."""
         try:
             self.bot.unload_extension(f"{name}")
+            print(f'Unloaded {name}')
         except Exception as e:
             return await ctx.send(f"```py\n{e}```")
         await ctx.send(f"📤 Unloaded extension: **`{name.replace('.','/')}.py`**")
