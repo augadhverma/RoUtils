@@ -22,6 +22,7 @@ from discord.ext import commands
 
 from typing import Optional, Union
 from datetime import datetime
+
 from utils import roblox, time, cache
 from utils.checks import botchannel
 from bot import RoUtils
@@ -67,7 +68,10 @@ class Information(commands.Cog):
                 The `roblox.Member` object if found else `None`
             """
             _all = (await self.bot.session.get(f"https://groups.roblox.com/v2/users/{userId}/groups/roles"))
-            _all = (await _all.json())['data']
+            try:
+                _all = (await _all.json())['data']
+            except KeyError:
+                return None
             user = await self.bot.session.get(f'https://users.roblox.com/v1/users/{userId}')
             user = (await user.json())
             for data in _all:
