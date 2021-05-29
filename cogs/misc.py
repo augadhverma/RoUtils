@@ -159,7 +159,21 @@ class Miscellaneous(commands.Cog):
         except commands.BadUnionArgument:
             await ctx.send(f"Cannot get id for {object}")
 
+    @botchannel()
+    @commands.command()
+    async def news(self, ctx:commands.Context):
+        """ Shows Bot News and Feature plans. """
+        news = f"The"
 
+        date = dt.datetime.utcnow().strftime('%B %d, %Y')
+
+        embed = discord.Embed(
+            title = f"\U0001f4f0 Latest News - {date} \U0001f4f0",
+            description = news,
+            colour = self.bot.invisible_colour
+        )
+
+        await ctx.send(embed=embed)
 
 def setup(bot:RoUtils):
     bot.add_cog(Miscellaneous(bot))
