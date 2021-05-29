@@ -132,20 +132,25 @@ class Moderation(commands.Cog):
     async def count_documents(self, user:discord.Member):
         count = await self.db.count_documents({'offender':user.id})
         guild:discord.Guild = user.guild
-        if count >= 5:
+        if count > 5:
             entry = await self.create_infraction(
                 type = InfractionType.kick.value,
                 moderator = self.bot.user,
                 offender = user,
                 reason = f"Auto kick for reaching {count} infractions."
             )
-
+            await user.kick(reason=f'User has been kicked for reaching {count} infractions.')
+            try:
+                await user.send(f'You have been kicked from RoWifi HQ for reaching {count} infractions.\n'\
+                                f'You may rejoin the server using the link: https://discord.gg/utAQwTX')
+            except:
+                pass
             embed = infraction_embed(entry, user)
             await post_log(guild, name='bot-logs', embed=embed)
 
         elif count >= 3:
             entry = await self.create_infraction(
-                type = InfractionType.mute.value,
+                type = InfractionType.automute.value,
                 moderator = self.bot.user,
                 offender = user,
                 reason = f"Auto mute for reaching {count} infractions."
@@ -155,6 +160,11 @@ class Moderation(commands.Cog):
 
             try:
                 await user.add_roles(role)
+            except:
+                pass
+            
+            try:
+                await user.send(f'You have been muted for 3 hours for reaching {count} infractions.')
             except:
                 pass
 
@@ -174,8 +184,7 @@ class Moderation(commands.Cog):
             type=InfractionType.warn.value,
             moderator=ctx.author,
             offender=offender,
-            reason=reason,
-            until=time.time()
+            reason=reason
         )
 
         embed = infraction_embed(entry=entry, offender=offender, type="warned", small=True)
@@ -266,7 +275,7 @@ class Moderation(commands.Cog):
 
     @intern()
     @commands.command(aliases=['sm'])
-    async def slowmode(self, ctx:commands.Context, channel:Optional[discord.TextChannel], delay:Optional[int]):
+    async def slowmode(self, ctx:commands.Context, channel:Optional[discord.TextChannel], delay:Optional[str]):
         """ Sets the slowmode of the channel given. If no channel is given, current one is used.
         If no delay is give, it shows the current slowmode of the channel.
 
@@ -275,15 +284,28 @@ class Moderation(commands.Cog):
 
         channel = channel or ctx.channel
 
-        if delay is None:
-            return await ctx.send(f"The current slowmode is **{humanize.intcomma(channel.slowmode_delay)}** seconds.")
-
-        elif delay>21600:
-            return await ctx.send("You cannot set a slowmode more than 6 hours (21600 seconds).")
-
+        current = channel.slowmode_delay
+        
+        await ctx.message.delete()
+        
+        if delay == "off":
+            await channel.edit(slowmode_delay=0)
+            return await ctx.send("I have disabled the slowmode!", delete_after=5.0)
+        elif delay and (delay[0] in ('+', '-')):
+            current = current + int(delay)
+            if current < 0:
+                current = 0
+            await channel.edit(slowmode_delay=current)
+            return await ctx.send(f"I have set the slowmode to {current} seconds!", delete_after=5.0)
+        elif delay:
+            try:
+                await channel.edit(slowmode_delay=int(delay))
+                return await ctx.send(f'I have set the slowmode to {delay} seconds!', delete_after=5.0)
+            except:
+                return await ctx.send('An error occured')
         else:
-            await channel.edit(slowmode_delay=delay)
-            return await ctx.send(f"Succesfully set the slowmode to **{humanize.intcomma(delay)}** seconds.")
+            await ctx.send(f'The current slowmode is {current} seconds.')
+        
 
     @staff()
     @commands.group(invoke_without_command=True)
@@ -726,6 +748,7 @@ class Moderation(commands.Cog):
     @staff()
     @commands.command(hidden=True)
     async def m(self, ctx, offender:discord.Member, *, reason:str):
+        """Helper function for mute. Mutes the offender for 3 hours. """
         await ctx.invoke(self.mute, offender=offender, Time=10800, reason=reason)
 
     @staff()
