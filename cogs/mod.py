@@ -683,7 +683,7 @@ class Moderation(commands.Cog):
         await post_log(ctx.guild, name='bot-logs', embed=infraction_embed(entry, offender))
 
     @staff()
-    @commands.command(aliases=['m'])
+    @commands.command()
     async def mute(self, ctx:commands.Context, offender:discord.Member, Time:TimeConverter, *, reason:str):
         """Mutes a user for a specified period of time.
         Valid formats are 2d 10h 3m 2s."""
@@ -722,6 +722,11 @@ class Moderation(commands.Cog):
         if Time < 300.0:
             await asyncio.sleep(Time)
             await offender.remove_roles(role)
+
+    @staff()
+    @commands.command(hidden=True)
+    async def m(self, ctx, offender:discord.Member, *, reason:str):
+        await ctx.invoke(self.mute, offender=offender, Time=10800, reason=reason)
 
     @staff()
     @commands.command(hidden=True)
