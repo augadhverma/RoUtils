@@ -19,6 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 
 
 from datetime import datetime
+import aiohttp
 import discord
 from discord.ext import commands
 from bot import RoUtils
@@ -58,7 +59,10 @@ class RawAPI(commands.Cog):
     async def raw(self, ctx:commands.Context, url:str):
         raw = urlCache.get(url, None)
         if raw is None:
-            raw = await self.get_json_content(url=url)
+            try:
+                raw = await self.get_json_content(url=url)
+            except aiohttp.InvalidURL:
+                return await ctx.send('Invalid url given!')
             raw = str(raw)
             urlCache[url] = raw
         await jskpagination(ctx, raw)
@@ -74,7 +78,7 @@ class RawAPI(commands.Cog):
         await jskpagination(ctx, raw, max_size=1900)
 
     @intern()
-    @raw.command()
+    @raw.command(aliases=['groups'])
     async def group(self, ctx:commands.Context, group_id:int):
         raw = groupCache.get(group_id, None)
         if raw is None:
