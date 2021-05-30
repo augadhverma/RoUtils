@@ -151,7 +151,7 @@ class Miscellaneous(commands.Cog):
         await jskpagination(ctx, str(content), wrap_on=(','))
 
     @botchannel()
-    @commands.command(aliases=['get_id'])
+    @commands.command(name="id",aliases=['getid'])
     async def getid(self, ctx:commands.Context, *, object:Union[discord.User, discord.Role, discord.TextChannel]):
         """ Gives you id of a role, user or text channel """
         try:
