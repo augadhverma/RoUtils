@@ -1,558 +1,779 @@
+"""
+Moderation Stuff.
+
+Copyright (C) 2021  ItsArtemiz (Augadh Verma)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>
+"""
+from __future__ import annotations
+
+import asyncio
+import time
 import discord
+import humanize
+import string
+import random
 
-from discord.ext import commands, menus
+from typing import Counter, Optional
+from discord.ext import commands, tasks, menus
 from datetime import datetime
-from typing import Optional, Union
-from collections import Counter
+from bot import RoUtils
 
-from utils.db import Connection
-from utils.checks import bot_channel, staff, senior_staff, council, STAFF, COUNCIL
-from utils.classes import BanList, DMInfractionEmbed, DiscordUser, InfractionType, EmbedLog, InfractionColour, InfractionEmbed, UserInfractionEmbed, UrlDetection
-
+from utils.utils import InfractionEntry, InfractionType
+from utils.db import MongoClient
+from utils.checks import botchannel, staff, seniorstaff, intern
+from utils.logging import infraction_embed, post_log
+from utils.paginator import InfractionPages, SimpleInfractionPages, FieldPageSource, RoboPages
+from utils.time import human_time, TimeConverter
 
 class Moderation(commands.Cog):
-    def __init__(self, bot:commands.Bot):
+    def __init__(self, bot:RoUtils):
         self.bot = bot
-        self.mod_db = Connection("Utilities","Infractions")
+        self.db = bot.mod_db
+        self.infraction_check.start()
 
-    def hierarchy_check(self, user:discord.Member, user2:discord.Member) -> bool:
-        if user.top_role<=user2.top_role:
+    def cog_unload(self):
+        self.infraction_check.cancel()
+
+    def hierarchy_check(self, moderator:discord.Member, offender:discord.User | discord.Member) -> bool:
+        owner = 449897807936225290
+        if moderator.id == owner:
+            return True
+
+        elif offender.id == owner:
             return False
-        elif user2.bot:
+
+        elif isinstance(offender, discord.Member):
+            if moderator.top_role <= offender.top_role:
+                return False
+
+        elif offender.bot:
             return False
+
         return True
-    async def get_or_fetch_user(self, id:int):
-        user = self.bot.get_user(id)
-        if user:
-            return user
-        user = await self.bot.fetch_user(id)
-        return user
-    
-    async def get_id(self) -> int:
-        data = self.mod_db.find({})
-        collection = []
-        
-        async for doc in data:
-            collection.append(doc)
-        if not collection:
+
+    async def get_new_id(self) -> int:
+        _all = []
+        async for doc in self.db.find({}):
+            _all.append(doc)
+        if _all:
+            return (_all.pop())['id']+1
+        else:
             return 1
-        latest = collection.pop()
-        return latest['id']+1
 
-    def embed_builder(self, type:InfractionType,**kwargs) -> discord.Embed:
-        title = kwargs['title']
-        offender = kwargs.get("offender")
-        moderator = kwargs.get("moderator")
-        reason = kwargs.get("reason")
-        id = kwargs.get("id")
+    async def create_infraction(self, **kwargs) -> InfractionEntry:
+        t = kwargs.get('type')
+        until = kwargs.get('until', None)
+        if (t <= 2) and (until is None):
+            until = time.time() + 1296000 # warn, automute & autokick will be in db for 15 days.
+        elif (t == 3) and (until is None):
+            until = time.time() + 10800 # if no time is passed to mute, by default 3 hours is chosen.
+        elif t in (4, 5):
+            until = time.time() + 2592000 # kick & softban will be in db for 30 days.
 
-        embed = discord.Embed(
-            colour = InfractionColour[type.name].value,
-            timestamp = datetime.utcnow()
-        )
-        embed.set_footer(text=self.bot.footer)
+        # ban & unban will be a permanent record of the user.
 
-        embed.title = f"{title} | Case #{id}"
-        embed.set_thumbnail(url=offender.avatar_url)
-        embed.description = f"**Offender:** {offender.mention} `({offender.id})`\n**Reason:** {reason}\n**Moderator:** {moderator.mention} `({moderator.id})`"
-        return embed
-
-
-    async def append_infraction(self, type:InfractionType, offender:Union[discord.User, discord.Member], moderator:discord.Member, reason:str,time:datetime=None) -> dict:
         document = {
-            "id":await self.get_id(),
-            "type":int(type),
-            "offender":offender.id,
-            "moderator":moderator.id,
-            "reason":reason,
-            "expires":time,
-            "added":datetime.utcnow()
+            'type':t,
+            'moderator':kwargs.get('moderator').id,
+            'offender':kwargs.get('offender').id,
+            'time':time.time(),
+            'until':until,
+            'reason':kwargs.get('reason'),
+            'id':await self.get_new_id()
         }
 
-        await self.mod_db.insert_one(document)
-        return document
+        await self.db.insert_one(document)
+        return InfractionEntry(data=document)
 
-    async def delete_infraction(self, id:str) -> dict:
-        document = await self.mod_db.find_one_and_delete({"id":{"$eq":id}})
-        return document
+    async def delete_infraction(self, doc:dict) -> Optional[dict]:
+        try:
+            until = doc['until']
+        except KeyError:
+            return doc
+        else:
+            if (until is not None) and (until <= time.time()):
+                if doc['type'] == 1 or doc['type'] == 3:
+                    guild = self.bot.get_guild(576325772629901312)
+                    if guild is None:
+                        guild = await self.bot.fetch_guild(576325772629901312)
+
+                    role = guild.get_role(624302931130187808)
+                    if role:
+                        member = guild.get_member(doc['offender'])
+                        if not member:
+                            member = await guild.fetch_member(doc['offender'])
+                        if member:
+                            try:
+                                await member.remove_roles(role)
+                            except:
+                                pass
+
+                try:
+                    await self.db.delete_one({'_id':doc['_id']})
+                except Exception as e:
+                    print(e)
+                return None
+            else:
+                return doc
+
+    # Need to add to warn commands.
+    async def count_documents(self, user:discord.Member):
+        count = await self.db.count_documents({'offender':user.id})
+        guild:discord.Guild = user.guild
+        if count > 5:
+            entry = await self.create_infraction(
+                type = InfractionType.kick.value,
+                moderator = self.bot.user,
+                offender = user,
+                reason = f"Auto kick for reaching {count} infractions."
+            )
+            await user.kick(reason=f'User has been kicked for reaching {count} infractions.')
+            try:
+                await user.send(f'You have been kicked from RoWifi HQ for reaching {count} infractions.\n'\
+                                f'You may rejoin the server using the link: https://discord.gg/utAQwTX')
+            except:
+                pass
+            embed = infraction_embed(entry, user)
+            await post_log(guild, name='bot-logs', embed=embed)
+
+        elif count >= 3:
+            entry = await self.create_infraction(
+                type = InfractionType.automute.value,
+                moderator = self.bot.user,
+                offender = user,
+                reason = f"Auto mute for reaching {count} infractions."
+            )
+
+            role = guild.get_role(624302931130187808)
+
+            try:
+                await user.add_roles(role)
+            except:
+                pass
+            
+            try:
+                await user.send(f'You have been muted for 3 hours for reaching {count} infractions.')
+            except:
+                pass
+
+            embed = infraction_embed(entry, user)
+            await post_log(guild, name='bot-logs', embed=embed)
 
     @staff()
     @commands.command()
-    async def warn(self, ctx:commands.Context, offender:discord.Member, *,reason:commands.clean_content):
-        """Warns a user"""
+    async def warn(self, ctx:commands.Context, offender:discord.Member, *, reason:commands.clean_content):
+        """ Warns a user. """
         await ctx.message.delete()
 
         if not self.hierarchy_check(ctx.author, offender):
-            return await ctx.send("You cannot perform that action due to the hierarchy.")
+            return await ctx.send('You cannot perform that action due to the hierarchy.')
 
-        doc = await self.append_infraction(
-            InfractionType.warn,
-            offender,
-            ctx.author,
-            reason
+        entry = await self.create_infraction(
+            type=InfractionType.warn.value,
+            moderator=ctx.author,
+            offender=offender,
+            reason=reason
         )
 
-        await ctx.send(f"Successfully warned **{offender}**. Reason: *{reason}*")
+        embed = infraction_embed(entry=entry, offender=offender, type="warned", small=True)
 
-        embed = self.embed_builder(
-            type= InfractionType.warn,
-            title = InfractionType.warn.name,
-            offender = offender,
-            moderator = ctx.author,
-            reason = reason,
-            id = doc['id']
-        )
+        await ctx.send(embed=embed)
 
-        await EmbedLog(ctx, embed).post_log()
+        embed = infraction_embed(entry=entry, offender=offender)
 
-        user_embed = UserInfractionEmbed(InfractionType.warn, reason, doc['id']).embed()
+        await post_log(ctx.guild, name='bot-logs', embed=embed)
         try:
-            await offender.send(embed=user_embed)
-        except:
-            await ctx.send("Couldn't DM the user since their DMs are closed", delete_after=5.0)
+            await offender.send(embed=infraction_embed(entry=entry, offender=offender, show_mod=False))
+        except discord.HTTPException:
+            pass
+
+        await self.count_documents(offender)
+
+    @staff()
+    @commands.command()
+    async def spam(self, ctx:commands.Context, *, offender:discord.Member):
+        """ Warns a member for spamming. """
+        await ctx.invoke(self.warn, offender=offender, reason=f"For spamming in #{ctx.channel.name}")
+
+    @staff()
+    @commands.command()
+    async def bypass(self, ctx:commands.Context, *, offender:discord.Member):
+        """ Warns a member for bypassing chat filter. """
+        await ctx.invoke(self.warn, offender=offender, reason=f"For bypassing in #{ctx.channel.name}")
+
+    @seniorstaff()
+    @commands.command()
+    async def kick(self, ctx:commands.Context, offender:discord.Member, *,reason:commands.clean_content):
+        """ Kicks a user from the server. """
+        await ctx.message.delete()
+
+        if not self.hierarchy_check(ctx.author, offender):
+            return await ctx.send('You cannot perform that action due to the hierarchy.')
+
+        entry = await self.create_infraction(
+            type=InfractionType.kick.value,
+            moderator=ctx.author,
+            offender=offender,
+            reason=reason
+        )
+        embed = infraction_embed(entry=entry, offender=offender, type="kicked", small=True)
+
+        await ctx.send(embed=embed)
+        try:
+            await offender.send(embed=infraction_embed(entry=entry, offender=offender, show_mod=False))
+        except discord.HTTPException:
+            pass
+        try:
+            await offender.kick(reason=reason + f" | Moderator: {ctx.author}")
+        except discord.Forbidden:
+            await ctx.send("Cannot Kick This User •.•")
+
+        embed = infraction_embed(entry=entry, offender=offender)
+
+        await post_log(ctx.guild, name='bot-logs', embed=embed)
+
+    @seniorstaff()
+    @commands.command()
+    async def ban(self, ctx:commands.Context, offender:discord.User, *,reason:commands.clean_content):
+        """ Bans a user from the server. """
+        await ctx.message.delete()
+
+        if not self.hierarchy_check(ctx.author, offender):
+            return await ctx.send('You cannot perform that action due to the hierarchy.')
+
+        entry = await self.create_infraction(
+            type=InfractionType.ban.value,
+            moderator=ctx.author,
+            offender=offender,
+            reason=reason
+        )
+        embed = infraction_embed(entry=entry, offender=offender, type="banned", small=True)
+
+        await ctx.send(embed=embed)
+        try:
+            await offender.send(embed=infraction_embed(entry=entry, offender=offender, show_mod=False))
+            await offender.send("Ban Appeal Form: https://forms.gle/5nPGXqiReY7SEHwv8")
+        except discord.HTTPException:
+            pass
+        await ctx.guild.ban(offender, reason=reason + f" | Moderator: {ctx.author}", delete_message_days =3)
+
+        embed = infraction_embed(entry=entry, offender=offender)
+
+        await post_log(ctx.guild, name='bot-logs', embed=embed)
+
+    @intern()
+    @commands.command(aliases=['sm'])
+    async def slowmode(self, ctx:commands.Context, channel:Optional[discord.TextChannel], delay:Optional[str]):
+        """ Sets the slowmode of the channel given. If no channel is given, current one is used.
+        If no delay is give, it shows the current slowmode of the channel.
+
+        NOTE: The delay should be given in seconds.
+        """
+
+        channel = channel or ctx.channel
+
+        current = channel.slowmode_delay
+        
+        await ctx.message.delete()
+        
+        if delay == "off":
+            await channel.edit(slowmode_delay=0)
+            return await ctx.send("I have disabled the slowmode!", delete_after=5.0)
+        elif delay and (delay[0] in ('+', '-')):
+            current = current + int(delay)
+            if current < 0:
+                current = 0
+            await channel.edit(slowmode_delay=current)
+            return await ctx.send(f"I have set the slowmode to {current} seconds!", delete_after=5.0)
+        elif delay:
+            try:
+                await channel.edit(slowmode_delay=int(delay))
+                return await ctx.send(f'I have set the slowmode to {delay} seconds!', delete_after=5.0)
+            except:
+                return await ctx.send('An error occured')
+        else:
+            await ctx.send(f'The current slowmode is {current} seconds.')
+        
 
     @staff()
     @commands.group(invoke_without_command=True)
-    async def warns(self, ctx:commands.Context, user:Optional[discord.User]):
-        """Shows warns of a user or everyone"""
-        container = []
-        if not user:
-            description = ""
-            infs = self.mod_db.find({})
-            async for inf in infs:    
-                container.append(inf['offender'])
-            if not container:
-                return await ctx.send("The server is squeaky clean. <:noice:811536531839516674> ")
-            embed = discord.Embed(
-                colour=discord.Color.blurple(),
-                title=f"The server has {len(container)} infractions.",
-            )
-            embed.set_footer(text=f"Run {ctx.prefix}warns <user> for infractions of a particular user.")
-            for offender, infractions in Counter(container).items():
-                description+=f"{(await self.get_or_fetch_user(offender)).mention} - {infractions} infractions\n"
-            embed.description = description
-            await ctx.send(embed=embed)
+    async def warns(self, ctx:commands.Context, *,user:Optional[discord.User]):
+        """ Shows all warns.
+        If a user is given, shows the warns given to the user.
+        """
+        pages = []
+        if user:
+            _all = self.db.find({'offender':user.id})
+            async for doc in _all:
+                if await self.delete_infraction(doc):
+                    pages.append(doc)
+        else:
+            _all = self.db.find({})
+            async for doc in _all:
+                if await self.delete_infraction(doc):
+                    pages.append(doc)
+        if not pages:
+            return await ctx.send("No infractions to show.")
 
-        elif user:
-            infs = self.mod_db.find({"offender":{"$eq":user.id}})
-            async for inf in infs:
-                container.append(inf)
+        try:
+            p = InfractionPages(pages, per_page=6, show_mod=True)
+        except menus.MenuError as e:
+            await ctx.send(e)
+        else:
+            await p.start(ctx)
 
-            if not container:
-                return await ctx.send(f"**{user}** is squeaky clean. <:noice:811536531839516674> ")
-            embed = await InfractionEmbed(ctx, container).embed_builder()
-            return await ctx.send(embed=embed)
-
-    @warns.command()
     @staff()
-    async def by(self, ctx:commands.Context, moderator:Optional[discord.User]):
-        """Shows warns made by a moderator"""
+    @warns.command(name='by')
+    async def warns_by(self, ctx:commands.Context, *,moderator:Optional[discord.User]):
+        """ Shows warnings by a moderator. """
         container = []
         if moderator:
-            infs = self.mod_db.find({"moderator":{"$eq":moderator.id}})
-            async for inf in infs:
-                container.append(inf)
-            if not container:
-                return await ctx.send(f"**{moderator}** hasn't made any infractions.")
-            embed = await InfractionEmbed(ctx, container).embed_builder()
-            return await ctx.send(embed=embed)
-
+            _all = self.db.find({'moderator':moderator.id})
+            async for doc in _all:
+                if await self.delete_infraction(doc):
+                    container.append(doc)
+            if container:
+                try:
+                    p = InfractionPages(container, per_page=6, show_mod=True)
+                except menus.MenuError as e:
+                    await ctx.send(e)
+                else:
+                    await p.start(ctx)
+            else:
+                await ctx.send("No infractions have been made by the given user.")
         else:
-            description = ""
-            infs = self.mod_db.find({})
-            async for inf in infs:
-                container.append(inf['moderator'])
-            if not container:
-                return await ctx.send("No infractions has been made by anyone.")
-            embed = discord.Embed(
-                colour = discord.Colour.blurple(),
-                title = f"This server has {len(container)} infractions."
-            )
-            embed.set_footer(text=f"Run {ctx.prefix}warns by <user> for infractions given by a particular moderator.")
-            for mod, infractions in Counter(container).items():
-                description+=f"{(await self.get_or_fetch_user(mod)).mention} has made **{infractions}** infraction(s).\n"
-            embed.description = description
-            await ctx.send(embed=embed)
+            mods = []
+            _all = self.db.find({})
+            async for inf in _all:
+                if await self.delete_infraction(inf):
+                    mods.append(inf['moderator'])
+            for mod, infs in Counter(mods).items():
+                container.append(f"<@{mod}> has made `{infs}` infractions.")
 
+            if container:
+                try:
+                    p = SimpleInfractionPages(container)
+                except menus.MenuError as e:
+                    await ctx.send(e)
+                else:
+                    await p.start(ctx)
+            else:
+                await ctx.send("No infractions have been made.")
+
+    @botchannel()
+    @commands.command()
+    async def mywarns(self, ctx:commands.Context):
+        """ Shows you your warns. """
+        await ctx.message.add_reaction("\U00002705")
+        to_delete = []
+        try:
+            dm = await ctx.author.send("Sending you a list of your infractions.")
+        except discord.Forbidden:
+            return await ctx.send("I do not have the permissions to DM you!", delete_after=5.0)
+        pages = []
+        async for doc in self.db.find({'offender':ctx.author.id}):
+            if await self.delete_infraction(doc):
+                pages.append(doc)
+
+        if pages:
+            try:
+                p = InfractionPages(pages, show_mod=False)
+            except menus.MenuError as e:
+                await ctx.send(e)
+            else:
+                await p.start(ctx, channel=dm.channel)
+        else:
+            await ctx.author.send("You don't have any active infractions.")
 
     @staff()
     @commands.command(aliases=['rw'])
-    async def removewarn(self, ctx:commands.Context, id:int, *,reason:str):
-        document = await self.delete_infraction(id)
-        if not document:
-            return await ctx.send(f"Couldn't find the infraction with id: {id}")
-        
-        type = InfractionType(document['type']).name
+    async def removewarn(self, ctx:commands.Context, id:int, *, reason:str):
+        """Removes an infraction."""
+        infraction = await self.db.find_one_and_delete({'id':id})
+        if infraction:
+            entry = InfractionEntry(data=infraction)
+            user = self.bot.get_user(entry.offender_id)
+            if not user:
+                user = await self.bot.fetch_user(entry.offender_id)
+            embed = infraction_embed(entry=entry, offender=user)
 
-        inf_id = document['id']
+            embed.colour = discord.Colour.dark_grey()
+            embed.title = embed.title + " | Infraction Removed"
+            embed.add_field(name="Infraction Removed by", value=ctx.author.mention)
+            embed.add_field(name="Reason for Removal", value=reason, inline=False)
 
-        embed = discord.Embed(
-            title = f"Infraction Removed ({type} | Case #{inf_id})",
-            colour = discord.Color.greyple(),
-            timestamp=datetime.utcnow()
-        )
+            await ctx.send(content="Removed the Infraction:", embed=embed)
 
-        moderator = await DiscordUser().convert(ctx, str(document['moderator']))
-        offender = await DiscordUser().convert(ctx, str(document['offender']))
+            await post_log(ctx.guild, name='bot-logs', embed=embed)
 
-        embed.description = f"**Offender:** {offender.mention} `({offender.id})`\n**Reason:** {document['reason']}\n**Moderator:** {moderator.mention} `({moderator.id})`"
-
-        embed.add_field(
-            name="Removed by",
-            inline=False,
-            value=f"{ctx.author.mention} `({ctx.author.id})`"
-        )
-        
-        embed.add_field(
-            name="Reason for Removal",
-            value=reason
-        )
+            try:
+                await user.send(f"Infraction with id {entry.id} of type {entry.type} issued for reason: *{entry.reason}* has been removed.")
+            except discord.HTTPException:
+                pass
 
 
-        embed.set_thumbnail(url=offender.avatar_url)
-        embed.set_footer(text=self.bot.footer)
-        await EmbedLog(ctx, embed).post_log()
-        await ctx.send(f"Successfully deleted infraction with id **{id}**. More info about the infraction can be found in the logs.")
+        else:
+            return await ctx.send("Cannot find an infraction with the given id.")
 
-    async def removal_log(self, ctx, search):
-        
-        embed = discord.Embed(
-            title = "Purge Command Used",
-            colour = self.bot.colour,
-            timestamp = datetime.utcnow()
-        ).set_thumbnail(url=ctx.author.avatar_url)
 
-        embed.set_footer(text=self.bot.footer)
-        embed.add_field(name="Used By", value=ctx.author.mention)
-        embed.add_field(name="Channel", value=ctx.channel.mention)
-        embed.add_field(name="Messages Purged", value=search)
+    @staff()
+    @commands.command(aliases=['cw'])
+    async def clearwarns(self, ctx:commands.Context, user:discord.User, *, reason:str):
+        await ctx.invoke(self.warns, user=user)
 
-        await EmbedLog(ctx, embed).post_log()
-        
+        def check(msg:discord.Message) -> bool:
+            author = msg.author == ctx.author
+            channel = msg.channel == ctx.channel
+            answer = msg.content.lower() in ('yes', 'y')
 
-    async def do_removal(self, ctx, limit, predicate):
-        await ctx.message.delete()
-        if limit > 2000:
-            return await ctx.send(f'Too many messages to search given ({limit}/2000)')
-        
+            return author and channel and answer
+
+        await ctx.send("Are you sure you want to delete all the infractions for the given user? Say `yes` if you want to.")
+
         try:
-            deleted = await ctx.channel.purge(limit=limit, check=predicate)
-        except discord.Forbidden as e:
-            return await ctx.send('I do not have permissions to delete messages.')
-        except discord.HTTPException as e:
-            return await ctx.send(f'Error: {e} (try a smaller search?)')
+            message = await self.bot.wait_for('message', timeout=15.0, check=check)
+        except asyncio.TimeoutError:
+            return await ctx.send("Timeout Reached! Aborting...")
+        else:
+            deleted = await self.db.delete_many({'offender':user.id})
 
-        spammers = Counter(m.author for m in deleted)
+            await ctx.send(f"Successfully deleted {deleted.deleted_count} infraction for the given user.")
+
+            embed = discord.Embed(
+                title = "ALL INFRACTIONS REMOVED",
+                colour = discord.Colour.dark_grey(),
+                timestamp = datetime.utcnow()
+            )
+            embed.add_field(name='Removed by', value=f"{ctx.author.mention} `({ctx.author.id})`", inline=False)
+            embed.add_field(name='Reason for Removal', value=reason, inline=False)
+            embed.description = f"Removed {deleted.deleted_count} infractions for {user.mention} `({user.id})`"
+            await post_log(ctx.guild, name='bot-logs', embed=embed)
+
+    @intern()
+    @commands.command()
+    async def nick(self, ctx:commands.Context, user:discord.Member, *, nick:str=None):
+        """ Changes a user's nickname. """
+        try:
+            await user.edit(nick=nick)
+            await ctx.message.add_reaction("\U00002705")
+        except discord.Forbidden:
+            await ctx.send("I do not have proper permissions to do that action!")
+
+    @intern()
+    @commands.command()
+    async def mod(self, ctx:commands.Context, *, user:discord.Member):
+        """ Changes a user's nickname to a Moderated Nickname. """
+        await ctx.invoke(self.nick, user=user, nick="Moderated Nickname "+"".join(random.sample(string.ascii_letters+string.digits, k=8)))
+
+    @seniorstaff()
+    @commands.command()
+    async def unban(self, ctx:commands.Context, user:discord.User, *, reason:str):
+        """ Unbans a user from the guild. """
+        try:
+            isbanned = await ctx.guild.fetch_ban(user)
+        except discord.NotFound:
+            await ctx.send("The given user is not banned.")
+
+        entry = await self.create_infraction(
+            type=InfractionType.unban.value,
+            moderator=ctx.author,
+            offender=user,
+            reason=reason
+        )
+
+        await ctx.guild.unban(user, reason=reason+f" | Moderator: {ctx.author}")
+
+        embed = infraction_embed(entry=entry, offender=user, type="unbanned", small=True)
+        embed.add_field(name="Previously banned for", value=isbanned.reason if isbanned.reason else 'No reason given.')
+
+        await ctx.send(embed=embed)
+
+        embed = infraction_embed(entry, user)
+        embed.add_field(name="Previously banned for", value=isbanned.reason if isbanned.reason else 'No reason given.')
+
+        await post_log(ctx.guild, name='bot-logs', embed=embed)
+
+    @intern()
+    @commands.command(aliases=['modlog'])
+    async def info(self, ctx:commands.Context, id:int):
+        """ Shows info of an infraction. """
+        infraction = await self.db.find_one({'id':id})
+        if infraction and (await self.delete_infraction(infraction)):
+            entry = InfractionEntry(data=infraction)
+            user = self.bot.get_user(entry.offender_id)
+            if not user:
+                user = await self.bot.fetch_user(entry.offender_id)
+            embed = infraction_embed(entry=entry, offender=user)
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send(f"Cannot find the infraction with id {id} in the databse.")
+
+    @staff()
+    @commands.group(invoke_without_command=True, aliases=['guildbans'])
+    async def bans(self, ctx:commands.Context, *, user:Optional[discord.User]):
+        """ Shows all the bans in the server. """
+        converted = []
+        if not user:
+            bans = await ctx.guild.bans()
+            for ban in bans:
+                converted.append((f"User: {ban.user}", f"Reason: {ban.reason or 'None provided...'}"))
+        else:
+            async for entry in ctx.guild.audit_logs(action=discord.AuditLogAction.ban):
+                if entry.target.id == user.id:
+                    converted.append(
+                        (f"ID: {entry.id} | Moderator: {entry.user}",
+                         f"Reason: {entry.reason or 'None provided...'}\nCreated At: {human_time(dt=entry.created_at, minimum_unit='minutes')}")
+                    )
+        if converted:
+            try:
+                p = RoboPages(FieldPageSource(converted, per_page=6))
+            except menus.MenuError as e:
+                await ctx.send(e)
+            else:
+                await p.start(ctx)
+        else:
+            await ctx.send("No bans to show.")
+
+
+    @staff()
+    @bans.command(name='by')
+    async def bans_by(self, ctx:commands.Context, moderator:discord.User):
+        """ Bans made by a moderator. """
+        converted = []
+        async for entry in ctx.guild.audit_logs(action=discord.AuditLogAction.ban, user=moderator):
+            converted.append(
+                (f"ID: {entry.id} | User: {entry.target}",
+                 f"Reason: {entry.reason or 'None provided...'}\nCreated At: {human_time(dt=entry.created_at, minimum_unit='minutes')}")
+            )
+        if converted:
+            try:
+                p = RoboPages(FieldPageSource(converted, per_page=6))
+            except menus.MenuError as e:
+                await ctx.send(e)
+            else:
+                await p.start(ctx)
+        else:
+            await ctx.send("No bans to show.")
+
+    async def do_removal(self, ctx:commands.Context, limit:int, predicate, *, before=None, after=None):
+        if limit > 2000:
+            return await ctx.send(f"To many messages to search given ({limit}/2000)")
+
+        if before is None:
+            before = ctx.message
+        else:
+            before = discord.Object(id=before)
+
+        if after is not None:
+            after = discord.Object(id=after)
+
+        try:
+            deleted = await ctx.channel.purge(
+                limit=limit, before=before, after=after, check=predicate
+            )
+        except discord.Forbidden:
+            return await ctx.send("I do not have proper permissions to delete messages.")
+        except discord.HTTPException as e:
+            return await ctx.send(f"Error: {e} (try a smaller search?)")
+
+        spammers = Counter(m.author.display_name for m in deleted)
         deleted = len(deleted)
         messages = [f'{deleted} message{" was" if deleted == 1 else "s were"} removed.']
         if deleted:
             messages.append('')
-            spammers = sorted(spammers.items(), key=lambda t: t[1], reverse=True)
+            spammers = sorted(spammers.items(), key=lambda t:t[1], reverse=True)
             messages.extend(f'**{name}**: {count}' for name, count in spammers)
 
         to_send = '\n'.join(messages)
 
         if len(to_send) > 2000:
-            await ctx.send(f'Successfully removed {deleted} messages.', delete_after=5)
+            await ctx.send(f'Successfully removed {deleted} messages', delete_after=10.0)
         else:
-            await ctx.send(to_send, delete_after=5)
+            await ctx.send(to_send, delete_after=10.0)
 
-        await self.removal_log(ctx, limit)
-    
-
+        await ctx.message.delete()
 
     @staff()
-    @commands.group(invoke_without_command=True, aliases=['clear'])
-    async def purge(self, ctx:commands.Context, search=1):
-        """Deletes messages.
-        
-        Ignores pinned messages"""
-        def pred(m):
-            return not m.pinned
-        await self.do_removal(ctx, search, pred)
+    @commands.group(invoke_without_command=True, aliases=['remove'])
+    async def purge(self, ctx:commands.Context, member:Optional[discord.Member], search:Optional[int]):
+        """ Removes messages that meet a certain criteria.
+
+        After the commmand has been executed, you will get
+        a message detailing which users got removed and how
+        many messages got removed.
+        """
+        if not member and not search and ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+        else:
+            if member:
+                await ctx.invoke(self.user, member=member, search=search)
+            elif search:
+                await ctx.invoke(self._remove_all, search=search)
 
     @staff()
     @purge.command()
-    async def embeds(self, ctx:commands.Context, search=1):
+    async def embeds(self, ctx:commands.Context, search=100):
         """Removes messages that have embeds in them."""
         await self.do_removal(ctx, search, lambda e: len(e.embeds))
 
     @staff()
     @purge.command()
-    async def files(self, ctx:commands.Context, search=1):
+    async def files(self, ctx:commands.Context, search=100):
         """Removes messages that have attachments in them."""
         await self.do_removal(ctx, search, lambda e: len(e.attachments))
 
     @staff()
     @purge.command()
-    async def images(self, ctx:commands.Context, search=1):
-        """Removes messages that have attachments and images in them."""
-        await self.do_removal(ctx, search, lambda e: len(e.attachments) or len(e.embeds))
+    async def images(self, ctx:commands.Context, search=100):
+        """Removes messages that have images in them."""
+        await self.do_removal(ctx, search, lambda e: len(e.embeds) or len(e.attachments))
+
+    @staff()
+    @purge.command(name='all')
+    async def _remove_all(self, ctx:commands.Context, search=100):
+        """Removes all messages."""
+        await self.do_removal(ctx, search, lambda e: True)
 
     @staff()
     @purge.command(aliases=['member'])
-    async def user(self, ctx:commands.Context, member:discord.Member, search=1):
-        """Removes messages by a certain user."""
+    async def user(self, ctx:commands.Context, member:discord.Member, search=100):
+        """Removes messages from a user."""
         await self.do_removal(ctx, search, lambda e: e.author == member)
 
     @staff()
     @purge.command()
-    async def contains(self, ctx:commands.Context, search=1,*, string:str):
-        """Removes all messages containing a string/substring.
+    async def contains(self, ctx:commands.Context, *, substr:str):
+        """Removes messags that contain a string.
 
-        The provided string should be atleast 3 characters long."""
-        if len(string)>3:
-            return await ctx.send("The provided string should be at least 3 characters long.")
-        await self.do_removal(ctx, search, lambda e: string in e.content)
-
+        The string to search should be atleast 3 characters long."""
+        await self.do_removal(ctx, 100, lambda e: substr in e.content)
 
     @staff()
-    @purge.command(name="bot")
-    async def _bot(self, ctx:commands.Context, search=1, prefix=None):
-        """Removes a bot user's messages and messages with their optional prefix"""
-
-        def pred(msg):
-            return (msg.webhook_id is None and msg.author.bot) or (prefix and msg.content.startswith(prefix))
+    @purge.command(name='bot')
+    async def _bot(self, ctx:commands.Context, prefix=None, search=100):
+        """Removes messages by a bot with their optional prefix."""
+        def pred(m):
+            return (m.webhook_id is None and m.author.bot) or (prefix and m.content.startswith(prefix))
 
         await self.do_removal(ctx, search, pred)
 
-    @senior_staff()
+    @intern()
     @commands.command()
-    async def kick(self, ctx:commands.Context, offender:discord.Member, *,reason:str):
-        """Kicks a user from the server."""
+    async def cleanup(self, ctx:commands.Context, search=100):
+        """Cleans up my messages."""
+        await self.do_removal(ctx, search, lambda e: e.author == ctx.bot.user)
+
+    @seniorstaff()
+    @commands.command()
+    async def softban(self, ctx:commands.Context, offender:discord.Member, *, reason:str):
+        """Bans and immediately unbans a user from the server."""
         await ctx.message.delete()
+
         if not self.hierarchy_check(ctx.author, offender):
-            return await ctx.send("You cannot perform that action due to the hierarchy.")
+            return await ctx.send('You cannot perform that action due to the hierarchy.')
 
-        doc = await self.append_infraction(
-            InfractionType.kick,
-            offender,
-            ctx.author,
-            reason
+        entry = await self.create_infraction(
+            type=InfractionType.softban.value,
+            moderator=ctx.author,
+            offender=offender,
+            reason=reason
         )
 
-
-        embed = self.embed_builder(
-            type= InfractionType.kick,
-            title = InfractionType.kick.name,
-            offender = offender,
-            moderator = ctx.author,
-            reason = reason,
-            id = doc['id']
-        )
-
-        await EmbedLog(ctx, embed).post_log()
-
-        user_embed = UserInfractionEmbed(InfractionType.kick, reason, doc['id']).embed()
-        try:
-            await offender.send(embed=user_embed)
-        except:
-            await ctx.send("Couldn't DM the user since their DMs are closed", delete_after=5.0)
+        embed = infraction_embed(entry, offender, 'softbanned', small=True)
+        await ctx.send(embed=embed)
 
         try:
-            await ctx.send(f"Successfully kicked **{offender}**. Reason: *{reason}*")
-            await offender.kick(reason=reason+f" Moderator: {ctx.author}")
-        except Exception as e:
-            await ctx.send(e)
-
-    @senior_staff()
-    @commands.command()
-    async def ban(self, ctx:commands.Context, offender:Union[discord.Member, discord.User], *,reason:str):
-        """Bans a user irrespective of them being in the server."""
-        await ctx.message.delete()
-        if not isinstance(offender, discord.User):
-            if not self.hierarchy_check(ctx.author, offender):
-                return await ctx.send("You cannot perform that action due to the hierarchy.")
-
-        doc = await self.append_infraction(
-            InfractionType.ban,
-            offender,
-            ctx.author,
-            reason
-        )
-
-
-        embed = self.embed_builder(
-            type= InfractionType.ban,
-            title = InfractionType.ban.name,
-            offender = offender,
-            moderator = ctx.author,
-            reason = reason,
-            id = doc['id']
-        )
-
-        await EmbedLog(ctx, embed).post_log()
-
-        user_embed = UserInfractionEmbed(InfractionType.ban, reason, doc['id']).embed()
-        try:
-            await offender.send(embed=user_embed)
-        except:
-            await ctx.send("Couldn't DM the user since their DMs are closed", delete_after=5.0)
-
-        try:        
-            await ctx.guild.ban(offender, reason=reason+f" Moderator: {ctx.author}", delete_message_days=7)
-            await ctx.send(f"Banned **{offender}**.Reason: *{reason}*.")
-        except Exception as e:
-            await ctx.send(e)
-
-    @senior_staff()
-    @commands.command()
-    async def unban(self, ctx:commands.Context, user:discord.User, *, reason:str):
-        """Unbans a user from the server"""
-        try:
-            banned:discord.BanEntry = await ctx.guild.fetch_ban(user)
-        except discord.NotFound:
-            return await ctx.send("The given user is not banned.")
-        except discord.HTTPException as e:
-            return await ctx.send(e)
-            
-        
-
-        doc = await self.append_infraction(
-            InfractionType.unban,
-            user,
-            ctx.author,
-            reason
-        )
-
-        await ctx.send(f"Succesfully unbanned **{banned.user}**.\nPreviously banned for: *{banned.reason}*.")
-
-        embed = self.embed_builder(
-            type= InfractionType.unban,
-            title = InfractionType.unban.name,
-            offender = user,
-            moderator = ctx.author,
-            reason = reason,
-            id = doc['id']
-        )
-
-        await EmbedLog(ctx, embed).post_log()
-
-        await ctx.guild.unban(user, reason=reason+f" Moderator: {ctx.author}")
-
-    @staff()
-    @commands.command()
-    async def nick(self, ctx:commands.Context, user:discord.Member, *, nick:Optional[str]):
-        """Changes the nickname of the user"""
-        await ctx.message.delete()
-        old = user.display_name
-        if not self.hierarchy_check(ctx.author, user):
-            return await ctx.send("You cannot perform that action due to the hierarchy.")
-        try:
-            await user.edit(nick = nick)
-        except Exception as e:
-            return await ctx.send(e)
-        await ctx.send(f"Changed the nickname from *{old}* to **{user.display_name}**.", delete_after=5.0)
-
-    @bot_channel()
-    @commands.command()
-    async def mywarns(self, ctx:commands.Context):
-        container = []
-        infs = self.mod_db.find({"offender":{"$eq":ctx.author.id}})
-        async for inf in infs:
-            if inf['type'] == int(InfractionType.unban):
-                pass
-            else:
-                container.append(inf)
-
-        if not container:
-            return await ctx.send(f"You are squeaky clean. <:noice:811536531839516674> ")
-        
-        embed = await DMInfractionEmbed(ctx, container).embed_builder()
-        await ctx.send(content="Sending you a list of your infractions.")
-        return await ctx.author.send(embed=embed)
-
-
-    @senior_staff()
-    @commands.command(aliases=['cw','clearwarn'])
-    async def clearwarns(self, ctx:commands.Context, user:Union[discord.User, discord.Member],*,reason:str):
-        deleted = await self.mod_db.delete_many({"offender":{"$eq":user.id}})
-        count = deleted.deleted_count
-        if count:
-            embed = discord.Embed(
-                title="All Infractions Removed",
-                timestamp = datetime.utcnow(),
-                description = f"Removed {count} infractions from {user.mention}\n`({user} | {user.id})`",
-                colour = 0x101010
-            )
-            embed.set_footer(text=self.bot.footer)
-            embed.set_thumbnail(url=user.avatar_url)
-            embed.add_field(name="Removed by", value=f"{ctx.author.mention} `({ctx.author.id})`")
-            embed.add_field(name="Reason for Removal", value=reason, inline=False)
-
-            await ctx.send(f"Deleted {count} infractions for **{user}**.")
-            await EmbedLog(ctx, embed).post_log()
-        else:
-            await ctx.send("The user doesn't have any infraction registered.")
-
-
-    @staff()
-    @commands.command(name="bans")
-    async def guild_bans(self, ctx:commands.Context):
-        bans:list = await ctx.guild.bans()
-        menu = menus.MenuPages(source=BanList(entries=bans, per_page=9))
-        await menu.start(ctx)
-
-
-
-
-    async def autowarn(self, offender:discord.Member, reason:str, message:discord.Message):
-            
-        doc = await self.append_infraction(
-            InfractionType.autowarn,
-            offender,
-            self.bot.user,
-            reason
-        )
-
-        embed = self.embed_builder(
-            type = InfractionType.autowarn,
-            title = InfractionType.autowarn.name,
-            offender = offender,
-            moderator = self.bot.user,
-            reason = reason,
-            id = doc['id']
-        )
-
-        await EmbedLog(await self.bot.get_context(message),embed).post_log()
-        user_embed = UserInfractionEmbed(InfractionType.autowarn, reason, doc['id']).embed()
-        try:
-            await offender.send(embed=user_embed)
-        except:
+            await offender.send(embed=infraction_embed(entry, offender, show_mod=False))
+        except discord.HTTPException:
             pass
 
-        await message.channel.send(f"Warned **{offender}**. Reason: *{reason}*", delete_after=5.0)
+        await ctx.guild.ban(offender, reason=reason + f" | Moderator: {ctx.author}", delete_message_days=3)
+        await ctx.guild.unban(offender, reason=reason + f" | Moderator: {ctx.author}")
+
+        await post_log(ctx.guild, name='bot-logs', embed=infraction_embed(entry, offender))
+
+    @staff()
+    @commands.command()
+    async def mute(self, ctx:commands.Context, offender:discord.Member, Time:TimeConverter, *, reason:str):
+        """Mutes a user for a specified period of time.
+        Valid formats are 2d 10h 3m 2s."""
+        await ctx.message.delete()
+
+        if not self.hierarchy_check(ctx.author, offender):
+            return await ctx.send('You cannot perform that action due to the hierarchy.')
+
+        role = ctx.guild.get_role(624302931130187808)
+        if role is None:
+            role = discord.utils.get(ctx.guild.roles, id=624302931130187808)
+
+        if role in offender.roles:
+            return await ctx.send('The given user is already muted!')
+        entry = await self.create_infraction(
+            type=InfractionType.mute.value,
+            moderator=ctx.author,
+            offender=offender,
+            reason=reason,
+            until = time.time() + Time
+        )
+
+        await offender.add_roles(role)
+
+        embed = infraction_embed(entry, offender, 'muted', small=True)
+        await ctx.send(embed=embed)
 
 
+        try:
+            await offender.send(embed=infraction_embed(entry, offender, show_mod=False))
+        except discord.HTTPException:
+            pass
 
-    # @commands.Cog.listener()
-    # async def on_message(self, message:discord.Message):
-    #     if not message.guild:
-    #         return
-    #     if not str(message.guild.id) in ("702180216533155933", "576325772629901312"):
-    #         return
-    #     elif message.author.bot:
-    #         return
-    #     elif await self.bot.is_owner(message.author):
-    #         return
-    #     elif STAFF in [role.id for role in message.author.roles] or COUNCIL in [role.id for role in message.author.roles]:
-    #         return
-    #     else:
-    #         if not message.channel.id == 707177435912994877 or not str(message.channel.category_id) in ("680039943199784960", "706010454010363924"):
-    #             invite_detected = UrlDetection().invite_check(message.content)
-    #             if invite_detected:
-    #                 await message.delete()
-    #                 await self.autowarn(message.author, "Automatic action carried out for using an invite.", message)
-               
-    #         has_invalid_link = UrlDetection().convert(message.content)
-    #         if not has_invalid_link:
-    #             await message.delete()
-    #             reason = "Automatic action carried out for using a blacklisted link."
-            
-    #             await self.autowarn(message.author, reason, message)
-                
+        await post_log(ctx.guild, name='bot-logs', embed=infraction_embed(entry, offender))
+
+        if Time < 300.0:
+            await asyncio.sleep(Time)
+            await offender.remove_roles(role)
+
+    @staff()
+    @commands.command(hidden=True)
+    async def m(self, ctx, offender:discord.Member, *, reason:str):
+        """Helper function for mute. Mutes the offender for 3 hours. """
+        await ctx.invoke(self.mute, offender=offender, Time=10800, reason=reason)
+
+    @staff()
+    @commands.command(hidden=True)
+    async def unmute(self, ctx:commands.Context, offender:discord.Member):
+        """Unmutes a user. """
+        role = ctx.guild.get_role(624302931130187808)
+        if role is None:
+            role = discord.utils.get(ctx.guild.roles, id=624302931130187808)
+
+        if role in offender.roles:
+            await offender.remove_roles(role)
+        else:
+            await ctx.send('The given user is not muted.')
+
+    @tasks.loop(minutes=5.0)
+    async def infraction_check(self):
+        infractions = self.db.find({})
+        async for doc in infractions:
+            await self.delete_infraction(doc)
+
+    @infraction_check.before_loop
+    async def before_infraction_check(self):
+        await self.bot.wait_until_ready()
 
 
-
-def setup(bot):
+def setup(bot:RoUtils):
     bot.add_cog(Moderation(bot))
