@@ -363,6 +363,12 @@ class Tags(commands.Cog):
             else:
                 await ctx.send("No tags found.")
 
+    @botchannel()
+    @commands.command()
+    async def tags(self, ctx:commands.Context, *, user:Optional[discord.User]):
+        """Lists tags by a user"""
+        user = user or ctx.author
+        await ctx.invoke(self._list, user=user)
 
 
 def setup(bot):
