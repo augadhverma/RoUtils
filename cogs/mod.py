@@ -707,7 +707,7 @@ class Moderation(commands.Cog):
     @staff()
     @commands.command()
     async def mute(self, ctx:commands.Context, offender:discord.Member, Time:TimeConverter, *, reason:str):
-        """Mutes a user for a specified period of time.
+        """Mutes a user for a specified period of time. Defaults to 3 hours.
         Valid formats are 2d 10h 3m 2s."""
         await ctx.message.delete()
 
@@ -744,6 +744,15 @@ class Moderation(commands.Cog):
         if Time < 300.0:
             await asyncio.sleep(Time)
             await offender.remove_roles(role)
+            
+    @mute.error
+    async def mute_error(self, ctx:commands.Context, error):
+        if isinstance(error, commands.MissingRequiredArgument):
+            # Need to do this because of the weird lazy TimeConverter I have used.
+            if error.param.name == 'reason':
+                args:list = ctx.args
+                content:str = ctx.message.content            # Default: 3 hours mute.
+                await ctx.invoke(self.mute, offender=args[2], Time=10800, reason=content.split(' ')[-1])
 
     @staff()
     @commands.command(hidden=True)
