@@ -18,6 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
 import asyncio
+import aiohttp
 import discord
 import time
 import datetime as dt
@@ -28,10 +29,11 @@ import psutil
 from bot import RoUtils
 from discord.ext import commands
 from typing import Optional, Union
+from tabulate import tabulate
 
 from utils.checks import admin, botchannel, intern, staff
 from utils.paginator import jskpagination
-from utils.logging import post_log
+from utils.logging import mystbin, post_log
 from utils.time import human_time
 
 class Miscellaneous(commands.Cog):
@@ -254,8 +256,21 @@ class Miscellaneous(commands.Cog):
                             f'Colour: {role.colour}'
             
         msg = await ctx.send(embed=embed)
-        if ctx.author.guild_permissions.administrator and len(role.members) <= 30:
+        if ctx.author.guild_permissions.administrator:
             await msg.add_reaction('<:member:824903975299973120>')
+            text = '\n'.join([f'{m.mention}' for m in role.members])
+            if len(text) > 1000:
+                headers = ['Name', 'ID']
+                table = [[str(m), m.id] for m in role.members]
+                text = tabulate(table, headers, tablefmt='orgtbl', showindex='always', colalign=('right',))
+                
+                try:    
+                    post = await mystbin(text, self.bot.session, language='')
+                    text = f'Too many members to show. Check [here]({post})'
+                except aiohttp.ServerDisconnectedError:
+                    text = 'Couldn\'t upload the members to an online paste bin. Please try again later.'
+            elif len(text) == 0:
+                text = 'None'
             
             def check(reaction, user):
                 return user == ctx.author and str(reaction.emoji) == '<:member:824903975299973120>'
@@ -267,13 +282,14 @@ class Miscellaneous(commands.Cog):
             else:
                 embed.add_field(
                     name='Members',
-                    value='\n'.join([f'{m.mention}' for m in role.members]) or 'None',
+                    value=text,
                     inline=False
                 )
                 
                 await msg.edit(content=None, embed=embed)
             finally:
                 await msg.clear_reaction('<:member:824903975299973120>')
+        
                 
     @admin()
     @role.command()
@@ -347,7 +363,7 @@ class Miscellaneous(commands.Cog):
             name='General Info',
             value=f'{a} **Developer:** ItsArtemiz#8858\n'\
                   f'{a} **Library:** [discord.py v{discord.__version__}](https://github.com/Rapptz/discord.py \'discord.py GitHub\')\n'\
-                  f'{a} **Created:** {human_time(self.bot.user.created_at)}',
+                  f'{a} **Created:** {human_time(self.bot.user.created_at, minimum_unit="minutes")}',
             inline=False
         )
 
@@ -360,7 +376,7 @@ class Miscellaneous(commands.Cog):
                   f'{a} **Channels:** <:text:824903975626997771> {text} | <:voice:824903975098777601> {voice}'
         )
 
-        embed.set_footer(text='RoUtils is a private bot created to manage the RoWifi HQ server.')
+        embed.set_footer(text=f"Last booted: {human_time(self.bot.uptime, minimum_unit='minutes')}")
 
         await ctx.send(embed=embed)
 def setup(bot:RoUtils):
