@@ -22,6 +22,8 @@ import discord
 import time
 import datetime as dt
 import humanize
+import psutil
+
 
 from bot import RoUtils
 from discord.ext import commands
@@ -30,10 +32,12 @@ from typing import Optional, Union
 from utils.checks import admin, botchannel, intern, staff
 from utils.paginator import jskpagination
 from utils.logging import post_log
+from utils.time import human_time
 
 class Miscellaneous(commands.Cog):
     def __init__(self, bot:RoUtils):
         self.bot = bot
+        self.process = psutil.Process()
         self._afk = dict()
 
     @intern()
@@ -263,7 +267,7 @@ class Miscellaneous(commands.Cog):
             else:
                 embed.add_field(
                     name='Members',
-                    value='\n'.join([f'{m.mention}' for m in role.members]),
+                    value='\n'.join([f'{m.mention}' for m in role.members]) or 'None',
                     inline=False
                 )
                 
@@ -314,6 +318,50 @@ class Miscellaneous(commands.Cog):
                 await ctx.send(e)
         else:
             await ctx.message.add_reaction('<:tick:818793909982461962>')
+
+    @botchannel()
+    @commands.command(name='about')
+    async def about(self, ctx:commands.Context):
+        """Tells you info about the bot"""
         
+        a = '<:arrow:849938169477857321>'
+
+        embed = discord.Embed(colour = self.bot.invisible_colour)
+
+        embed.set_author(name=f'{self.bot.user} | v{self.bot.version}', icon_url=self.bot.user.avatar_url)
+
+        text = 0
+        voice = 0
+
+        for guild in self.bot.guilds:
+            for channel in guild.channels:
+                if isinstance(channel, discord.TextChannel):
+                    text += 1
+                elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
+                    voice += 1
+
+        memory_usage = self.process.memory_full_info().uss / 1024**2
+        cpu_usage = self.process.cpu_percent() / psutil.cpu_count()
+
+        embed.add_field(
+            name='General Info',
+            value=f'{a} **Developer:** ItsArtemiz#8858\n'\
+                  f'{a} **Library:** [discord.py v{discord.__version__}](https://github.com/Rapptz/discord.py \'discord.py GitHub\')\n'\
+                  f'{a} **Created:** {human_time(self.bot.user.created_at)}',
+            inline=False
+        )
+
+        embed.add_field(
+            name='Stats',
+            value=f'{a} **Commands Loaded:** {len(self.bot.commands)}\n'\
+                  f'{a} **RAM Usage:** {memory_usage:.2f}MiB\n'\
+                  f'{a} **CPU Usage:** {cpu_usage:.2f}%\n'\
+                  f'{a} **Users:** {len(self.bot.users)}\n'\
+                  f'{a} **Channels:** <:text:824903975626997771> {text} | <:voice:824903975098777601> {voice}'
+        )
+
+        embed.set_footer(text='RoUtils is a private bot created to manage the RoWifi HQ server.')
+
+        await ctx.send(embed=embed)
 def setup(bot:RoUtils):
     bot.add_cog(Miscellaneous(bot))
