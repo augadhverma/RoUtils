@@ -1,6 +1,8 @@
+import asyncio
 import discord
 import humanize
 import time
+import aiohttp
 
 from discord.ext import commands
 from typing import Optional, Union
@@ -113,3 +115,24 @@ def infraction_embed(entry:InfractionEntry, offender:discord.User, type:str=None
 
 
         return embed
+
+async def mystbin(data, session:aiohttp.ClientSession, *, language='python') -> str:
+    """Posts the `data` to mystbin.
+
+    Args:
+        data ([type]): The data to post.
+        session: The ClientSession to use to make the POST request.
+        language (str, optional): The encoding on web server. Defaults to 'python'.
+
+    Returns:
+        str: The url to mystbin.
+    """
+    data = bytes(data, 'utf-8')
+    
+    try:
+        async with session.post('https://mystb.in/documents', data = data, timeout=10.0) as r:
+            res = await r.json()
+            key = res['key']
+            return f'https://mystb.in/{key}.{language}'
+    except asyncio.TimeoutError:
+        return 'https://mystb.in/WorkingEducatedPosition'
