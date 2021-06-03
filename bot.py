@@ -33,7 +33,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-prefixes = ('.',)
+prefixes = ('.',';')
 
 os.environ["JISHAKU_NO_UNDERSCORE"] = "True"
 os.environ["JISHAKU_NO_DM_TRACEBACK"] = "True"
