@@ -31,6 +31,13 @@ class CommandErrorHandler(commands.Cog):
     def __init__(self, bot:RoUtils):
         self.bot = bot
 
+    async def mystbin(self, data) -> str:
+        data = bytes(data, 'utf-8')
+        r = await self.bot.session.post('https://mystb.in/documents', data=data)
+        res = await r.json()
+        key = res['key']
+        return f'https://mystb.in/{key}.python'
+
     @commands.Cog.listener()
     async def on_command_error(self, ctx:commands.Context, error:commands.CommandError):
         """This event is triggered when an error is raised while invoking a command.
@@ -111,10 +118,12 @@ class CommandErrorHandler(commands.Cog):
             await ctx.send("Invalid command usage, follow the help:")
             await ctx.send_help(ctx.command)
         
-        elif isinstance(error, (NotStaff, NotAdmin, NotBotChannel, TagNotFound)):
-            await ctx.send(str(error))
+        elif isinstance(error, (NotStaff, NotAdmin, NotBotChannel, TagNotFound, commands.RoleNotFound)):
+            await ctx.send(discord.utils.escape_mentions(str(error)))
 
         else:
+            exception = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+            
             embed = embed_builder(
                 bot = self.bot,
                 title = "An Unexpected Error Occurred",
@@ -123,12 +132,15 @@ class CommandErrorHandler(commands.Cog):
                 colour= discord.Colour.red(),
                 footer=f"Caused by: {ctx.command}"
             )
-
+            
+            embed.add_field(name="Full Error", value=await self.mystbin(exception))
+            
             await ctx.send(embed = embed)
-            msg = await post_log(ctx.guild, name="bot-logs", embed=embed)
+            
+            await post_log(ctx.guild, name="bot-logs", embed=embed)
 
             print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
-            traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+            print(exception)
 
 def setup(bot:RoUtils):
     bot.add_cog(CommandErrorHandler(bot))

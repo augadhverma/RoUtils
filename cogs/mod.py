@@ -21,7 +21,6 @@ from __future__ import annotations
 import asyncio
 import time
 import discord
-import humanize
 import string
 import random
 
@@ -29,10 +28,10 @@ from typing import Counter, Optional
 from discord.ext import commands, tasks, menus
 from datetime import datetime
 from bot import RoUtils
+from utils import fuzzy
 
 from utils.utils import InfractionEntry, InfractionType
-from utils.db import MongoClient
-from utils.checks import botchannel, staff, seniorstaff, intern
+from utils.checks import botchannel, staff, seniorstaff, intern, STAFF, INTERN
 from utils.logging import infraction_embed, post_log
 from utils.paginator import InfractionPages, SimpleInfractionPages, FieldPageSource, RoboPages
 from utils.time import human_time, TimeConverter
@@ -41,6 +40,7 @@ class Moderation(commands.Cog):
     def __init__(self, bot:RoUtils):
         self.bot = bot
         self.db = bot.mod_db
+        self.utils = bot.utils
         self.infraction_check.start()
 
     def cog_unload(self):
@@ -707,7 +707,7 @@ class Moderation(commands.Cog):
     @staff()
     @commands.command()
     async def mute(self, ctx:commands.Context, offender:discord.Member, Time:TimeConverter, *, reason:str):
-        """Mutes a user for a specified period of time.
+        """Mutes a user for a specified period of time. Defaults to 3 hours.
         Valid formats are 2d 10h 3m 2s."""
         await ctx.message.delete()
 
@@ -744,6 +744,15 @@ class Moderation(commands.Cog):
         if Time < 300.0:
             await asyncio.sleep(Time)
             await offender.remove_roles(role)
+            
+    @mute.error
+    async def mute_error(self, ctx:commands.Context, error):
+        if isinstance(error, commands.MissingRequiredArgument):
+            # Need to do this because of the weird lazy TimeConverter I have used.
+            if error.param.name == 'reason':
+                args:list = ctx.args
+                content:str = ctx.message.content            # Default: 3 hours mute.
+                await ctx.invoke(self.mute, offender=args[2], Time=10800, reason=content.split(' ')[-1])
 
     @staff()
     @commands.command(hidden=True)
@@ -774,6 +783,47 @@ class Moderation(commands.Cog):
     async def before_infraction_check(self):
         await self.bot.wait_until_ready()
 
+    async def staff_check(self, member:discord.Member) -> bool:
+        """Checks if a user is a member of a Staff Team or not.
+
+        Args:
+            member (discord.Member): The member to check
+
+        Returns:
+            bool: Whether the member belonged to the staff team.
+        """
+        if await self.bot.is_owner(member):
+            return True
+        elif member.guild_permissions.administrator:
+            return True
+        
+        roles = [r.id for r in member.roles]
+        if INTERN in roles or STAFF in roles:
+            return True
+        
+        return False
+
+    async def check_banned_word(self, message:discord.Message):
+        choices = (await self.utils.find_one({'type':'badwords'}))['badwords']
+        content:str = message.content.lower()
+        match = fuzzy.extract_or_exact(content, choices, limit=1, scorer=fuzzy.partial_ratio)
+            
+        if match[0][1] > 50:
+            return match[0]      
+        
+    @commands.Cog.listener()
+    async def on_message(self, message:discord.Message):
+        if message.author.bot:
+            return
+        if not message.guild:
+            return
+        
+        
+        # check = await self.check_banned_word(message)
+        
+        # if check:
+        #     await message.channel.send(f'Your message matched {check[1]}% with {check[0]}')
+        
 
 def setup(bot:RoUtils):
     bot.add_cog(Moderation(bot))

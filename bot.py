@@ -33,7 +33,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-prefixes = ('.',)
+prefixes = ('.',';')
 
 os.environ["JISHAKU_NO_UNDERSCORE"] = "True"
 os.environ["JISHAKU_NO_DM_TRACEBACK"] = "True"
@@ -75,6 +75,8 @@ class RoUtils(commands.Bot):
             self.mod_db = MongoClient(db="Utilities", collection="Infractions")
         if not hasattr(self, 'tag_db'):
             self.tag_db = MongoClient(db="Utilities", collection="Tags")
+        if not hasattr(self, 'utils'):
+            self.utils = MongoClient(db='Utilities', collection='Utils')
 
         for cog in extensions:
             cog:str

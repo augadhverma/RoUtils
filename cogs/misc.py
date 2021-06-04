@@ -17,21 +17,29 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
+import asyncio
+import aiohttp
 import discord
 import time
 import datetime as dt
 import humanize
+import psutil
+
 
 from bot import RoUtils
 from discord.ext import commands
 from typing import Optional, Union
+from tabulate import tabulate
 
-from utils.checks import admin, botchannel, intern
+from utils.checks import admin, botchannel, intern, staff
 from utils.paginator import jskpagination
+from utils.logging import mystbin, post_log
+from utils.time import human_time
 
 class Miscellaneous(commands.Cog):
     def __init__(self, bot:RoUtils):
         self.bot = bot
+        self.process = psutil.Process()
         self._afk = dict()
 
     @intern()
@@ -179,6 +187,197 @@ class Miscellaneous(commands.Cog):
         )
 
         await ctx.send(embed=embed)
+    
+    @staff()    
+    @commands.command()
+    async def notify(self, ctx:commands.Context, member:discord.Member, *, text:str):
+        """Notifies a user about something.
+        
+        Helper Texts
+        -------------
+        `ad`: Notifies the user about their ad not following advertisement rules."""
+        
+        if text.lower() == 'ad':
+            text = "Your advertisement was deleted because it doesn't follow our advertisement rules."
+            
+        embed = discord.Embed(
+            title = "Notification from RoWifi Staff",
+            description = text,
+            timestamp = dt.datetime.utcnow(),
+            colour = discord.Colour.magenta()
+        )
+            
+        try:
+            await member.send(embed=embed)
+        except discord.Forbidden:
+            await ctx.send(f"Couldn't send the message to {member}")
+        finally:
+            embed.add_field(
+                name = "From",
+                value = f"{ctx.author.mention} `({ctx.author.id})`",
+                inline=False
+            )
+            
+            embed.add_field(
+                name = "To",
+                value = f"{member.mention} `({member.id})`",
+                inline=False
+            )
+            
+            await post_log(ctx.guild, name='bot-logs', embed=embed)
+            
+    @admin()
+    @commands.group(invoke_without_command=True)
+    async def role(self, ctx:commands.Context, member:commands.Greedy[discord.Member], role:commands.Greedy[discord.Role]):
+        """ Adds a role to a member. 
+        
+        You can provide multiple users at once aswell."""
+        if not member and not role:
+            return await ctx.send_help(self.role)
+        for m in member:
+            try:
+                await m.add_roles(*role),
+            except Exception as e:
+                await ctx.send(e)
+        await ctx.message.add_reaction('<:tick:818793909982461962>')
+    @botchannel()
+    @role.command()
+    async def info(self, ctx:commands.Context, *, role:discord.Role):
+        """ Shows info on a role. """
+        embed = discord.Embed(
+            title = "Role Info",
+            colour = role.colour,
+            timestamp = role.created_at
+        )
+        embed.set_footer(text='Created At')
+        embed.description = f'Name: {role.name}\n'\
+                            f'ID: `{role.id}`\n'\
+                            f'Members: {len(role.members)}\n'\
+                            f'Colour: {role.colour}'
+            
+        msg = await ctx.send(embed=embed)
+        if ctx.author.guild_permissions.administrator:
+            await msg.add_reaction('<:member:824903975299973120>')
+            text = '\n'.join([f'{m.mention}' for m in role.members])
+            if len(text) > 1000:
+                headers = ['Name', 'ID']
+                table = [[str(m), m.id] for m in role.members]
+                text = tabulate(table, headers, tablefmt='orgtbl', showindex='always', colalign=('right',))
+                
+                try:    
+                    post = await mystbin(text, self.bot.session, language='')
+                    text = f'Too many members to show. Check [here]({post})'
+                except aiohttp.ServerDisconnectedError:
+                    text = 'Couldn\'t upload the members to an online paste bin. Please try again later.'
+            elif len(text) == 0:
+                text = 'None'
+            
+            def check(reaction, user):
+                return user == ctx.author and str(reaction.emoji) == '<:member:824903975299973120>'
 
+            try:
+                reaction, user = await self.bot.wait_for('reaction_add', check=check, timeout=30.0)
+            except asyncio.TimeoutError:
+                pass
+            else:
+                embed.add_field(
+                    name='Members',
+                    value=text,
+                    inline=False
+                )
+                
+                await msg.edit(content=None, embed=embed)
+            finally:
+                await msg.clear_reaction('<:member:824903975299973120>')
+        
+                
+    @admin()
+    @role.command()
+    async def remove(self, ctx:commands.Context, member:commands.Greedy[discord.Member], role:commands.Greedy[discord.Role]):
+        """ Removes a role from user(s)"""
+        for m in member:
+            try:
+                await m.remove_roles(*role)
+            except Exception as e:
+                await ctx.send(e)
+                
+        await ctx.message.add_reaction('<:tick:818793909982461962>')
+        
+    @admin()
+    @role.command(name='all')
+    async def roleall(self, ctx:commands.Context, role:commands.Greedy[discord.Role]):
+        """ Roles everyone a role"""
+        await ctx.message.add_reaction('\U000025b6')
+        count = 0
+        for member in ctx.guild.members:
+            if count>0 and count//10 == 0:
+                await asyncio.sleep(5.0)
+            try:
+                await member.add_roles(*role)
+            except Exception as e:
+                await ctx.send(e)
+        else:
+            await ctx.message.add_reaction('<:tick:818793909982461962>')
+            
+    @admin()
+    @role.command(name='rall', aliases=['removeall'])
+    async def rall(self, ctx:commands.Context, role:commands.Greedy[discord.Role]):
+        """ Removes a role from everyone. """
+        await ctx.message.add_reaction('\U000025b6')
+        count = 0
+        for member in ctx.guild.members:
+            if count>0 and count//10 == 0:
+                await asyncio.sleep(5.0)
+            try:
+                await member.remove_roles(*role)
+            except Exception as e:
+                await ctx.send(e)
+        else:
+            await ctx.message.add_reaction('<:tick:818793909982461962>')
+
+    @botchannel()
+    @commands.command(name='about')
+    async def about(self, ctx:commands.Context):
+        """Tells you info about the bot"""
+        
+        a = '<:arrow:849938169477857321>'
+
+        embed = discord.Embed(colour = self.bot.invisible_colour)
+
+        embed.set_author(name=f'{self.bot.user} | v{self.bot.version}', icon_url=self.bot.user.avatar_url)
+
+        text = 0
+        voice = 0
+
+        for guild in self.bot.guilds:
+            for channel in guild.channels:
+                if isinstance(channel, discord.TextChannel):
+                    text += 1
+                elif isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
+                    voice += 1
+
+        memory_usage = self.process.memory_full_info().uss / 1024**2
+        cpu_usage = self.process.cpu_percent() / psutil.cpu_count()
+
+        embed.add_field(
+            name='General Info',
+            value=f'{a} **Developer:** ItsArtemiz#8858\n'\
+                  f'{a} **Library:** [discord.py v{discord.__version__}](https://github.com/Rapptz/discord.py \'discord.py GitHub\')\n'\
+                  f'{a} **Created:** {human_time(self.bot.user.created_at, minimum_unit="minutes")}',
+            inline=False
+        )
+
+        embed.add_field(
+            name='Stats',
+            value=f'{a} **Commands Loaded:** {len(self.bot.commands)}\n'\
+                  f'{a} **RAM Usage:** {memory_usage:.2f}MiB\n'\
+                  f'{a} **CPU Usage:** {cpu_usage:.2f}%\n'\
+                  f'{a} **Users:** {len(self.bot.users)}\n'\
+                  f'{a} **Channels:** <:text:824903975626997771> {text} | <:voice:824903975098777601> {voice}'
+        )
+
+        embed.set_footer(text=f"Last booted: {human_time(self.bot.uptime, minimum_unit='minutes')}")
+
+        await ctx.send(embed=embed)
 def setup(bot:RoUtils):
     bot.add_cog(Miscellaneous(bot))
