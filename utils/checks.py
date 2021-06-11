@@ -1,13 +1,5 @@
 from discord.ext import commands
 
-class NotBotChannel(Exception):
-    pass
-
-class NotStaff(Exception):
-    pass
-
-class NotAdmin(Exception):
-    pass
 
 INTERN = 783068153856131072
 STAFF = 652203841978236940
@@ -29,7 +21,7 @@ def admin():
             if (MANAGEMENT in roles) or (COUNCIL in roles):
                 return True
             else:
-                raise NotAdmin(f"{ctx.author} is not an admin.")
+                return False
     return commands.check(pred)
 
 def seniorstaff():
@@ -44,7 +36,7 @@ def seniorstaff():
             if (MANAGEMENT in roles) or (COUNCIL in roles) or (SENIORSTAFF in roles):
                 return True
             else:
-                raise NotStaff(f"{ctx.author} is not a senior staff member.")
+                return False
     return commands.check(pred)
 
 def staff():
@@ -59,7 +51,7 @@ def staff():
             if (MANAGEMENT in roles) or (COUNCIL in roles) or (SENIORSTAFF in roles) or (STAFF in roles):
                 return True
             else:
-                raise NotStaff(f"{ctx.author} is not a staff member.")
+                return False
     return commands.check(pred)
 
 def intern():
@@ -74,7 +66,7 @@ def intern():
             if (MANAGEMENT in roles) or (COUNCIL in roles) or (SENIORSTAFF in roles) or (STAFF in roles) or (INTERN in roles):
                 return True
             else:
-                raise NotStaff(f"{ctx.author} is not a staff member.")
+                return False
     return commands.check(pred)
 
 def botchannel():
@@ -89,5 +81,5 @@ def botchannel():
         elif ctx.channel.id == BOTCHANNEL:
             return True
         else:
-            raise NotBotChannel(f"`{ctx.command.name}` can be only used in the bot commands channel.")
+            return False
     return commands.check(pred)
