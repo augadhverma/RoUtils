@@ -69,7 +69,7 @@ class RoUtils(commands.Bot):
         self.footer = "RoUtils"
         self.invisible_colour = 0x2F3136
         self.loop.create_task(self.create_session())
-        self.version = "1.2.0b"
+        self.version = "1.2.5b"
 
         if not hasattr(self, 'mod_db'):
             self.mod_db = MongoClient(db="Utilities", collection="Infractions")
