@@ -51,7 +51,7 @@ def is_bot_channel():
         if INTERN in roles:
             return True
 
-        settings: dict = ctx.bot.utils.find_one({'type':'settings'})
+        settings: dict = await ctx.bot.utils.find_one({'type':'settings'})
 
         if ctx.channel.id in settings.get('disabledChannels', []):
             return False
