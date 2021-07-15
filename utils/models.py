@@ -163,27 +163,45 @@ class ViewEmbedPages(ViewMenuPages, inherit_buttons=False):
     def _skip_when_short(self):
         return self.source.get_max_pages() <=1
 
+    async def check_author(self, interaction: discord.Interaction):
+        if not self.ctx:
+            return True
+
+        is_owner = await self.bot.is_owner(interaction.user)
+        if is_owner:
+            return True
+
+        if interaction.user != self.ctx.author:
+            await interaction.followup.send('You do not own this interaction', ephemeral=True)
+        
+        return False
+
     @menus.button('\N{BLACK LEFT-POINTING DOUBLE TRIANGLE WITH VERTICAL BAR}', position=menus.First(0), skip_if=_skip_when)
-    async def rewind(self, payload):
+    async def rewind(self, interaction: discord.Interaction):
         """Goes to first page."""
-        await self.show_page(0)
+        if await self.check_author(interaction):
+            await self.show_page(0)
 
     @menus.button('\N{BLACK LEFT-POINTING TRIANGLE}', position=menus.First(1), skip_if=_skip_when_short)
     async def back(self, interaction: discord.Interaction):
         """Goes to the previous page."""
-        await self.show_checked_page(self.current_page - 1)
+        if await self.check_author(interaction):
+            await self.show_checked_page(self.current_page - 1)
 
     @menus.button('\N{BLACK SQUARE FOR STOP}', position=menus.First(2))
     async def stop_menu(self, interaction: discord.Interaction):
         """Removes this message."""
-        self.stop()
+        if await self.check_author(interaction):
+            self.stop()
 
     @menus.button('\N{BLACK RIGHT-POINTING TRIANGLE}', position=menus.Last(0), skip_if=_skip_when_short)
     async def forward(self, interaction: discord.Interaction):
         """Goes to the next page."""
-        await self.show_checked_page(self.current_page + 1)
+        if await self.check_author(interaction):
+            await self.show_checked_page(self.current_page + 1)
 
     @menus.button('\N{BLACK RIGHT-POINTING DOUBLE TRIANGLE WITH VERTICAL BAR}', position=menus.Last(1), skip_if=_skip_when)
     async def fastforward(self, interaction: discord.Interaction):
         """Goes to the last page."""
-        await self.show_page(self._source.get_max_pages() - 1)
+        if await self.check_author(interaction):
+            await self.show_page(self._source.get_max_pages() - 1)
