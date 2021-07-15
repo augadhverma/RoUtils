@@ -61,7 +61,7 @@ class Context(commands.Context):
         except discord.HTTPException:
             pass
 
-    async def reply(self, content, *, mention=True, **kwargs):
+    async def reply(self, content=None, *, mention=True, **kwargs):
         msg: discord.Message = self.message
 
         default_mentions = discord.AllowedMentions.none()
