@@ -22,6 +22,7 @@ import discord
 import os
 
 from discord.ext import commands
+from typing import NamedTuple
 from dotenv import load_dotenv
 from utils.context import Context
 from .db import Client
@@ -40,6 +41,14 @@ initial_extensions = {
     'cogs.info'
 }
 
+class VersionInfo(NamedTuple):
+	major: int
+	minor: int
+	micro: int
+	releaselevel: str
+	serial: int
+
+
 class Bot(commands.Bot):
     def __init__(self) -> None:
         intents = discord.Intents.default()
@@ -56,10 +65,12 @@ class Bot(commands.Bot):
 
         self.loop.create_task(self.create_session())
 
-        self.version = '2.0.0b'
+        self.__version__ = '2.0.0b'
         self.colour = discord.Colour.blue()
         self.footer = 'RoUtils'
-        
+
+        self.version_info = VersionInfo(major=2, minor=0, micro=0, releaselevel='beta', serial=0)
+
         for cog in initial_extensions:
             try:
                 self.load_extension(cog)
@@ -83,6 +94,9 @@ class Bot(commands.Bot):
             
     async def on_ready(self) -> None:
         print(f'Ready {self.user} (ID: {self.user.id})')
+
+        if not hasattr(self, 'uptime'):
+            self.uptime = discord.utils.utcnow()
 
     async def close(self):
         await super().close()

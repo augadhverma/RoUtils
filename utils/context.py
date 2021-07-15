@@ -36,7 +36,7 @@ class Context(commands.Context):
 
     @property
     def version(self) -> str:
-        return self.bot.version
+        return self.bot.__version__
 
     @property
     def colour(self) -> int:
