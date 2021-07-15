@@ -19,6 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import aiohttp
 import discord
 
+from typing import Optional
 from discord.ext import commands
 
 class Context(commands.Context):
@@ -37,7 +38,29 @@ class Context(commands.Context):
     def version(self) -> str:
         return self.bot.version
 
-    @discord.utils.copy_doc(discord.Message.reply)
+    @property
+    def colour(self) -> int:
+        return self.bot.colour
+
+    color = colour
+
+    @property
+    def footer(self) -> str:
+        return self.bot.footer
+
+    async def tick(self, opt:Optional[bool]=True) -> None:
+        lookup = {
+            True:'<:yesTick:818793909982461962>',
+            False:'<:noTick:811230315648647188>',
+            None:'<:maybeTick:853693562113622077>'
+        }
+        
+        emoji = lookup.get(opt, '<:noTick:811230315648647188>')
+        try:
+            return await self.message.add_reaction(emoji)
+        except discord.HTTPException:
+            pass
+
     async def reply(self, content, *, mention=True, **kwargs):
         msg: discord.Message = self.message
 
