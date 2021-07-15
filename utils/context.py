@@ -61,13 +61,13 @@ class Context(commands.Context):
         except discord.HTTPException:
             pass
 
-    async def reply(self, content=None, *, mention=True, **kwargs):
+    async def reply(self, content=None, *, mention=False, **kwargs):
         msg: discord.Message = self.message
 
         default_mentions = discord.AllowedMentions.none()
 
         allowed_mentions = kwargs.pop('allowed_mentions', default_mentions)
-        mention_author = kwargs.pop('mention_author', True)
+        mention_author = kwargs.pop('mention_author', mention)
 
         return await msg.reply(
             content=content, 
