@@ -23,6 +23,7 @@ import os
 
 from discord.ext import commands
 from dotenv import load_dotenv
+from utils.context import Context
 from .db import Client
 
 load_dotenv()
@@ -36,6 +37,7 @@ os.environ["JISHAKU_HIDE"] = "True"
 
 initial_extensions = {
     'jishaku',
+    'cogs.info'
 }
 
 class Bot(commands.Bot):
@@ -55,6 +57,8 @@ class Bot(commands.Bot):
         self.loop.create_task(self.create_session())
 
         self.version = '2.0.0b'
+        self.colour = discord.Colour.blue()
+        self.footer = 'RoUtils'
         
         for cog in initial_extensions:
             try:
@@ -62,6 +66,9 @@ class Bot(commands.Bot):
             except Exception:
                 print(f'Failed to load extension {cog}', file=sys.stderr)
                 traceback.print_exc()
+
+    async def get_context(self, message, *, cls=None):
+        return await super().get_context(message, cls=Context)
 
     async def create_session(self) -> None:
         db = 'Utilities'

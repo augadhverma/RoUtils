@@ -89,7 +89,7 @@ class Role:
     membercount: int
 
     def __init__(self, data: dict):
-        self._update(CaseInsensitiveDict(dict))
+        self._update(CaseInsensitiveDict(data))
 
     def __str__(self) -> str:
         return self.name
@@ -110,14 +110,14 @@ class Role:
         self.membercount = data.get('membercount', 0)
 
 class Member(BaseUser):
-    __slots__ = BaseUser.__slots__ + ('role', 'group_id')
-
-    role: Role
-    group_id: int
 
     def __init__(self, data: dict, group_id: int) -> None:
         super()._update(CaseInsensitiveDict(data))
         self.group_id = group_id
+        self.role = Role(data['role'])
+
+    def __repr__(self) -> str:
+        return f'<Member id={self.id} name={self.name!r} group_id={self.group_id} role={self.role!r}>'
 
     def __eq__(self, o: object) -> bool:
         return isinstance(o, BaseUser) and o.id == self.id
@@ -127,5 +127,3 @@ class Member(BaseUser):
 
     def _update(self, data: CaseInsensitiveDict):
         super()._update(CaseInsensitiveDict(data))
-
-        self.role = Role(data['role'])

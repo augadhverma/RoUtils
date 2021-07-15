@@ -61,7 +61,7 @@ class CaseInsensitiveDict(dict):
     """
     def __init__(
         self,
-        __m: Union[Optional[Mapping[_KT, _VT]], Optional[Iterable[Tuple[_KT, _VT]]]] = None,
+        __m: Optional[Union[Optional[Mapping[_KT, _VT]], Optional[Iterable[Tuple[_KT, _VT]]]]] = None,
         **kwargs
     ) -> None:
         super().__init__(self.__create_dict(__m, kwargs))
@@ -131,14 +131,14 @@ class Cache(CaseInsensitiveDict):
     def __getitem__(self, k: _KT) -> _VT:
         item = self.get(k)
         if item:
-            if (time.monotonic() - item[0]) < self.__ttl:
-                return item if self.show_time else item[1]
+            if (time.monotonic() - item[1]) < self.__ttl:
+                return item if self.show_time else item[0]
             else:
                 self.__delitem__(k)
         raise KeyError()
 
     def __setitem__(self, k: _KT, v: _VT) -> None:
-        return super().__setitem__(k, (time.monotonic() ,v))
+        return super().__setitem__(k, (v, time.monotonic()))
 
     def __contains__(self, o: object) -> bool:
         if o not in self.keys():
@@ -153,7 +153,7 @@ class Cache(CaseInsensitiveDict):
         except KeyError:
             to_return = False
         else:
-            if (time.monotonic() - item[0]) < self.__ttl:
+            if (time.monotonic() - item[1]) < self.__ttl:
                 to_return = True
             else:
                 self.__delitem__(o)
@@ -164,7 +164,7 @@ class Cache(CaseInsensitiveDict):
     def __iter__(self) -> Iterator[_KT]:
         keys_to_del = []
         for k, v in self.items():
-            if (time.monotonic() - v[0]) < self.__ttl:
+            if (time.monotonic() - v[1]) < self.__ttl:
                 yield k
             else:
                 keys_to_del.append(k)
