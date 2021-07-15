@@ -22,7 +22,7 @@ import discord
 import os
 
 from discord.ext import commands
-from typing import NamedTuple
+from typing import Iterable, NamedTuple
 from dotenv import load_dotenv
 from utils.context import Context
 from .db import Client
@@ -38,7 +38,8 @@ os.environ["JISHAKU_HIDE"] = "True"
 
 initial_extensions = {
     'jishaku',
-    'cogs.info'
+    'cogs.info',
+    'cogs.settings'
 }
 
 class VersionInfo(NamedTuple):
@@ -48,6 +49,17 @@ class VersionInfo(NamedTuple):
 	releaselevel: str
 	serial: int
 
+async def get_pre(bot, message: discord.Message):
+    base = []
+    if message.guild is None:
+        base.append('.')
+
+    else:
+        settings: dict = await bot.utils.find_one({'type':'settings'})
+        prefixes = settings.get('prefixes', [])
+        base.extend(prefixes)
+
+    return commands.when_mentioned_or(*base)(bot, message)
 
 class Bot(commands.Bot):
     def __init__(self) -> None:
@@ -55,7 +67,7 @@ class Bot(commands.Bot):
         intents.members = True
 
         super().__init__(
-            command_prefix=commands.when_mentioned_or('.', ';'),
+            command_prefix=get_pre,
             strip_after_prefix=True,
             allowed_mentions=discord.AllowedMentions.none(),
             owner_id=449897807936225290,
