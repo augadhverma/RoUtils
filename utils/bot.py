@@ -39,7 +39,8 @@ os.environ["JISHAKU_HIDE"] = "True"
 initial_extensions = {
     'jishaku',
     'cogs.info',
-    'cogs.settings'
+    'cogs.settings',
+    'cogs.tags'
 }
 
 class VersionInfo(NamedTuple):
