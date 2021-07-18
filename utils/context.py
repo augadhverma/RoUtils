@@ -61,6 +61,7 @@ class Context(commands.Context):
         except discord.HTTPException:
             pass
 
+    @discord.utils.copy_doc(discord.Message.reply)
     async def reply(self, content=None, *, mention=False, **kwargs):
         msg: discord.Message = self.message
 
@@ -75,3 +76,11 @@ class Context(commands.Context):
             mention_author=mention_author,
             **kwargs
         )
+
+
+    @discord.utils.cached_property
+    def replied_reference(self):
+        ref = self.message.reference
+        if ref and isinstance(ref.resolved, discord.Message):
+            return ref.resolved.to_reference()
+        return None
