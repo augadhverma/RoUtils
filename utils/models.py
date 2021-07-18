@@ -22,8 +22,9 @@ import datetime
 import aiohttp
 import discord
 import humanize
+import random
 
-from typing import Optional, Union
+from typing import Any, Optional, TypedDict, Union
 from discord.ext import commands, menus
 from discord.ext.menus.views import ViewMenuPages
 
@@ -151,11 +152,12 @@ class ViedEmbedSource(menus.ListPageSource):
 
 class ViewEmbedPages(ViewMenuPages, inherit_buttons=False):
     def __init__(self, source, embed=None, **kwargs):
-        super().__init__(source=source, check_embeds=True, **kwargs)
+        self.remove_fast = kwargs.pop('remove_fast', False)
         if embed:
             self.embed = embed
         else:
             self.embed = discord.Embed(colour=discord.Colour.blue())
+        super().__init__(source=source, check_embeds=True, **kwargs)
     
     def _skip_when(self):
         return self.source.get_max_pages() <= 2
@@ -205,3 +207,165 @@ class ViewEmbedPages(ViewMenuPages, inherit_buttons=False):
         """Goes to the last page."""
         if await self.check_author(interaction):
             await self.show_page(self._source.get_max_pages() - 1)
+
+    async def send_initial_message(self, ctx, channel):
+
+        if self.remove_fast:
+            reactions = {
+                '\N{BLACK LEFT-POINTING DOUBLE TRIANGLE WITH VERTICAL BAR}',
+                '\N{BLACK RIGHT-POINTING DOUBLE TRIANGLE WITH VERTICAL BAR}'
+            }
+
+            for r in reactions:
+                try:
+                    self.remove_button(r)
+                except discord.HTTPException:
+                    pass
+        return await super().send_initial_message(ctx, channel)
+
+class TagEntry:
+    def __init__(self, document: dict[str, Any]):
+        self.document = document
+
+        self._id = document['_id']
+        self.id = str(self._id)
+
+        self.owner_id: int = document['owner']
+        self.name: str = document['name']
+        self.created: datetime.datetime = document['created']
+        self.aliases: list[str] = document.get('aliases', [])
+
+        self._embed: bool = document.get('embed', False)
+        self._uses = document['uses']
+        self._content: str = document.get('content', '')
+        self._url: list[str, str] = document.get('url', [])
+        self._image: str = document.get('image', None)
+
+    @property
+    def embed(self) -> bool:
+        return self._embed
+
+    @embed.setter
+    def embed(self, value: bool):
+        self._embed = value
+
+    @property
+    def uses(self) -> int:
+        return self._uses
+
+    @uses.setter
+    def uses(self, value: int):
+        self._uses = value
+
+    @property
+    def content(self) -> str:
+        return self._content
+
+    @content.setter
+    def content(self, value: str):
+        self._content = str(value) if value else '\uFEFF'
+
+    @property
+    def url(self) -> list[str, str]:
+        return self._url
+
+    @url.setter
+    def url(self, value: list[str, str]):
+        if value is not None and not value[1].startswith('http'):
+            raise RuntimeError('Invalid URL was provided, please provide an URL that starts with http(s).')
+        self._url = value
+
+    @property
+    def image(self) -> str:
+        return self._image
+
+    @image.setter
+    def image(self, value: str):            
+        if value is not None and not value.startswith('http'):
+            raise RuntimeError('Invalid URL was provided, please provide an URL that starts with http(s).')
+        self._image = value
+
+    def to_send(self, *, timeout: Optional[float] = 180.0) -> list[str | discord.Embed, Optional[discord.ui.View]]:
+        to_return = []
+        if self.embed:
+            embed = discord.Embed(
+                colour = discord.Colour.blue(),
+                timestamp = utcnow()
+            )
+            
+            embed.set_footer(text=f'Tag: {self.name}')
+
+            if self._content:
+                embed.description = self._content
+
+            if self._image:
+                embed.set_image(url=self._image)
+            
+            to_return.append(embed)
+        else:
+            to_return.append(self._content)
+
+        if self._url:
+            view = discord.ui.View(timeout=timeout)
+            button = discord.ui.Button(
+                style = discord.ButtonStyle.link,
+                label = self._url[0],
+                url = self._url[1]
+            )
+
+            view.add_item(button)
+            
+            to_return.append(view)
+        else:
+            to_return.append(None)
+
+        return to_return
+
+    def to_embed(self) -> discord.Embed:
+        embed = discord.Embed(
+            title = self.name,
+            colour = discord.Colour.blue(),
+            timestamp = utcnow()
+        )
+
+        embed.set_footer(text='Tag created at')
+
+        embed.set_author(name=f'ID: {self.id}')
+
+        embed.add_field(name='Owner', value=f'<@{self.owner_id}>')
+        embed.add_field(name='Uses', value=f'{self.uses}')
+        embed.add_field(name='Aliases', value=f'{len(self.aliases)}')
+
+        return embed
+
+    def to_dict(self) -> dict:
+        result = {
+            key[1:]: getattr(self, key)
+            for key in self.__dict__.keys()
+            if key[0] == '_' and hasattr(self, key)
+        }
+
+        del result['id']
+
+        result['_id'] = self._id
+
+        result['name'] = self.name
+
+        result['owner'] = self.owner_id
+
+        result['aliases'] = self.aliases
+
+        result['created'] = self.created
+
+        return result
+
+class TagAlias(commands.FlagConverter, case_insensitive=True):
+    _add: Optional[str] = commands.flag(name='add')
+    remove: Optional[str]
+
+class TagOptions(commands.FlagConverter, case_insensitive=True):
+    content: Optional[commands.clean_content]
+    url: Optional[str]
+    image: Optional[str]
+    embed: Optional[str] = commands.flag(default='false')
+    
