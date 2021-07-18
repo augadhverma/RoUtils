@@ -382,10 +382,6 @@ class Info(commands.Cog, name='Information'):
 
         if role:
             entries.sort(key=lambda s: s.split('-')[-1])
-            
-        
-
-                        
 
         embed = discord.Embed(
             colour = discord.Colour.blue(),
@@ -398,7 +394,7 @@ class Info(commands.Cog, name='Information'):
             inline=False
         )
 
-        pages = utils.ViewEmbedPages(source=utils.ViedEmbedSource(entries=entries), embed=embed, clear_reactions_after=True)
+        pages = utils.ViewEmbedPages(source=utils.ViedEmbedSource(entries=entries), embed=embed, clear_reactions_after=True, timeout=900.0)
         await pages.start(ctx)
 
     @info.error
@@ -423,8 +419,9 @@ class Info(commands.Cog, name='Information'):
                 embed.add_field(name='Message', value=error.message, inline=False)
             except AttributeError:
                 pass            
-
-        return await ctx.send(embed=embed)
+            await ctx.send(embed=embed)
+            raise error
+        await ctx.send(embed=embed)
 
     def format_commit(self, commit):
         gt = datetime.datetime.strptime(f"{commit['commit']['committer']['date']}", '%Y-%m-%dT%H:%M:%SZ')

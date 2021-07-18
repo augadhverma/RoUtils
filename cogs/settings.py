@@ -258,7 +258,7 @@ class Settings(commands.Cog):
     async def changing_status(self) -> None:
         status = random.choice([
             discord.Status.online,
-            discord.Status.offline,
+            discord.Status.idle,
             discord.Status.dnd
         ])
 
