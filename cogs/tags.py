@@ -19,6 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 
 import discord
+from jishaku.shim.paginator_200 import PaginatorEmbedInterface
 import utils
 
 from typing import Optional
@@ -292,9 +293,13 @@ class Tags(commands.Cog):
 
         if matches:
             embed = discord.Embed(title='Close matches found', colour=ctx.colour)
-            pages = utils.ViewEmbedPages(source=utils.ViedEmbedSource(matches, per_page=15), clear_reactions_after=True, timeout=900.0, embed=embed)
+            paginator = commands.Paginator(prefix='', suffix='', max_size=350)
+            for i,t in enumerate(matches, 1):
+                paginator.add_line(f'{i}. {t}')
 
-            await pages.start(ctx)
+            interface = PaginatorEmbedInterface(self.bot, paginator, owner=ctx.author, embed=embed)
+
+            await interface.send_to(ctx)
         else:
             await ctx.reply('Could not find the tag.')
 
@@ -306,17 +311,19 @@ class Tags(commands.Cog):
         user = user or ctx.author
 
         search: list[str] = []
-        async for t in self.bot.tags.find({}):
-            if t['owner'] == user.id:
-                search.append(t['name'])
-                for a in t.get('aliases', []):
-                    search.append(a)
+        async for t in self.bot.tags.find({'owner':user.id}):
+            search.append(f"{t['name']} *(uses: {t['uses']})*")
+                
 
         if search:
             embed = discord.Embed(title=f'All tags owned by {user}', colour=ctx.colour)
-            pages = utils.ViewEmbedPages(utils.ViedEmbedSource(search, per_page=15), clear_reactions_after=True, timeout=900.0, embed=embed)
+            paginator = commands.Paginator(prefix='', suffix='', max_size=350)
+            for i,t in enumerate(search, 1):
+                paginator.add_line(f'{i}. {t}')
 
-            await pages.start(ctx)
+            interface = PaginatorEmbedInterface(self.bot, paginator, owner=ctx.author, embed=embed)
+
+            await interface.send_to(ctx)
         else:
             await ctx.reply(f'**{user}** does not own any tags.')
 
@@ -332,15 +339,13 @@ class Tags(commands.Cog):
 
         if search:
             embed = discord.Embed(title='All Server Specific Tags', colour=ctx.colour)
-            pages = utils.ViewEmbedPages(
-                utils.ViedEmbedSource(search, per_page=20),
-                clear_reactions_after=True,
-                timeout=900.0,
-                remove_fast=True,
-                embed=embed
-            )
+            paginator = commands.Paginator(prefix='', suffix='', max_size=350)
+            for i,t in enumerate(search, 1):
+                paginator.add_line(f'{i}. {t}')
 
-            await pages.start(ctx)
+            interface = PaginatorEmbedInterface(self.bot, paginator, owner=ctx.author, embed=embed)
+
+            await interface.send_to(ctx)
         else:
             await ctx.reply(f'No tags were found for the server.')
 

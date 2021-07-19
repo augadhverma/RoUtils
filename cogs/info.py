@@ -360,11 +360,14 @@ class Info(commands.Cog, name='Information'):
         entries = []
         async for msg in channel.history(limit=None, after=after):
             if msg.embeds:
-                e = msg.embeds[0]
-                panel = e.fields[2].value
-                number = e.fields[1].value.split('-')[-1]
-                url = e.fields[-2].value.replace(')', '(').split('(')[1]
-                display = f'[{panel} {number}]({url})'
+                try:
+                    e = msg.embeds[0]
+                    panel = e.fields[2].value
+                    number = e.fields[1].value.split('-')[-1]
+                    url = e.fields[-2].value.replace(')', '(').split('(')[1]
+                    display = f'[{panel} {number}]({url})'
+                except IndexError:
+                    pass
                 
                 lines = e.fields[-1].value.split('\n')
                 for line in lines:
@@ -396,8 +399,16 @@ class Info(commands.Cog, name='Information'):
             inline=False
         )
 
-        pages = utils.ViewEmbedPages(source=utils.ViedEmbedSource(entries=entries), embed=embed, clear_reactions_after=True, timeout=900.0)
-        await pages.start(ctx)
+        if len(entries) == 0:
+            return await ctx.send(f'No tickets handled by `{user if user else f"@{role}"}`')
+
+        paginator = commands.Paginator(prefix='', suffix='', max_size=2000)
+        for i,t in enumerate(entries, 1):
+            paginator.add_line(f'{i}. {t}')
+
+        interface = PaginatorEmbedInterface(self.bot, paginator, owner=ctx.author, embed=embed)
+
+        await interface.send_to(ctx)
 
     @info.error
     async def info_err(self, ctx: utils.Context, error: commands.CommandError):

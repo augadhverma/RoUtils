@@ -22,11 +22,9 @@ import datetime
 import aiohttp
 import discord
 import humanize
-import random
 
-from typing import Any, Optional, TypedDict, Union
-from discord.ext import commands, menus
-from discord.ext.menus.views import ViewMenuPages
+from typing import Any, Optional, Union
+from discord.ext import commands
 
 from .bot import Bot
 from .roblox import User, time_roblox
@@ -133,95 +131,6 @@ class TicketFlag(commands.FlagConverter, case_insensitive=True):
     role: Optional[discord.Role]
     after: Optional[str]
 
-class ViedEmbedSource(menus.ListPageSource):
-    def __init__(self, entries, *, per_page=10):
-        super().__init__(entries, per_page=per_page)
-
-    async def format_page(self, menu: menus.Menu, entries):
-        maximum = self.get_max_pages()
-        if maximum > 1:
-            footer = f'Page {menu.current_page + 1}/{maximum} ({len(self.entries)} entries)'
-            menu.embed.set_footer(text=footer)
-        
-        pages = []
-        for index, entry in enumerate(entries, start=menu.current_page * self.per_page):
-            pages.append(f'{index + 1}. {entry}')        
-
-        menu.embed.description = '\n'.join(pages)
-        return menu.embed
-
-class ViewEmbedPages(ViewMenuPages, inherit_buttons=False):
-    def __init__(self, source, embed=None, **kwargs):
-        self.remove_fast = kwargs.pop('remove_fast', False)
-        if embed:
-            self.embed = embed
-        else:
-            self.embed = discord.Embed(colour=discord.Colour.blue())
-        super().__init__(source=source, check_embeds=True, **kwargs)
-    
-    def _skip_when(self):
-        return self.source.get_max_pages() <= 2
-    
-    def _skip_when_short(self):
-        return self.source.get_max_pages() <=1
-
-    async def check_author(self, interaction: discord.Interaction):
-        if not self.ctx:
-            return True
-
-        is_owner = await self.bot.is_owner(interaction.user)
-        if is_owner:
-            return True
-
-        if interaction.user != self.ctx.author:
-            await interaction.followup.send('You do not own this interaction', ephemeral=True)
-        
-        return False
-
-    @menus.button('\N{BLACK LEFT-POINTING DOUBLE TRIANGLE WITH VERTICAL BAR}', position=menus.First(0), skip_if=_skip_when)
-    async def rewind(self, interaction: discord.Interaction):
-        """Goes to first page."""
-        if await self.check_author(interaction):
-            await self.show_page(0)
-
-    @menus.button('\N{BLACK LEFT-POINTING TRIANGLE}', position=menus.First(1), skip_if=_skip_when_short)
-    async def back(self, interaction: discord.Interaction):
-        """Goes to the previous page."""
-        if await self.check_author(interaction):
-            await self.show_checked_page(self.current_page - 1)
-
-    @menus.button('\N{BLACK SQUARE FOR STOP}', position=menus.First(2))
-    async def stop_menu(self, interaction: discord.Interaction):
-        """Removes this message."""
-        if await self.check_author(interaction):
-            self.stop()
-
-    @menus.button('\N{BLACK RIGHT-POINTING TRIANGLE}', position=menus.Last(0), skip_if=_skip_when_short)
-    async def forward(self, interaction: discord.Interaction):
-        """Goes to the next page."""
-        if await self.check_author(interaction):
-            await self.show_checked_page(self.current_page + 1)
-
-    @menus.button('\N{BLACK RIGHT-POINTING DOUBLE TRIANGLE WITH VERTICAL BAR}', position=menus.Last(1), skip_if=_skip_when)
-    async def fastforward(self, interaction: discord.Interaction):
-        """Goes to the last page."""
-        if await self.check_author(interaction):
-            await self.show_page(self._source.get_max_pages() - 1)
-
-    async def send_initial_message(self, ctx, channel):
-
-        if self.remove_fast:
-            reactions = {
-                '\N{BLACK LEFT-POINTING DOUBLE TRIANGLE WITH VERTICAL BAR}',
-                '\N{BLACK RIGHT-POINTING DOUBLE TRIANGLE WITH VERTICAL BAR}'
-            }
-
-            for r in reactions:
-                try:
-                    self.remove_button(r)
-                except discord.HTTPException:
-                    pass
-        return await super().send_initial_message(ctx, channel)
 
 class TagEntry:
     def __init__(self, document: dict[str, Any]):
