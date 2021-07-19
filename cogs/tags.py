@@ -130,6 +130,13 @@ class Tags(commands.Cog):
                 name.casefold() in [a.casefold() for a in c.aliases]):
                 return await ctx.send(f'{name} is a reserved key word and cannot be used to create a tag.')
 
+        try:
+            await self.get_tag(name)
+        except RuntimeError:
+            pass
+        else:
+            return await ctx.send(f'{name} is already an existing tag.')
+
         document = {
             'name': name,
             'content':flags.content or '\uFEFF',
@@ -404,6 +411,12 @@ class Tags(commands.Cog):
             to_remove = []
 
         for a in to_add:
+            try:
+                await self.get_tag(a)
+            except RuntimeError:
+                pass
+            else:
+                return await ctx.send(f'{a} is an existing tag. Please try again.')
             for c in cmds:
                 if (a.casefold() == c.name.casefold() or
                     a.casefold() in [b.casefold() for b in c.aliases]):
