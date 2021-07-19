@@ -19,7 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 
 import discord
-from jishaku.shim.paginator_200 import PaginatorEmbedInterface
+from jishaku.paginators import PaginatorEmbedInterface
 import utils
 
 from typing import Optional

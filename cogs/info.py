@@ -29,7 +29,7 @@ import psutil
 from typing import Optional, Union
 from collections import Counter
 from discord.ext import commands
-from jishaku.shim.paginator_200 import PaginatorEmbedInterface, PaginatorInterface
+from jishaku.paginators import PaginatorEmbedInterface
 
 cache = utils.Cache(None)
 
