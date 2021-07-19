@@ -19,6 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 
 import datetime
+import json
 import time
 import discord
 import pkg_resources
@@ -28,6 +29,7 @@ import psutil
 from typing import Optional, Union
 from collections import Counter
 from discord.ext import commands
+from jishaku.shim.paginator_200 import PaginatorEmbedInterface, PaginatorInterface
 
 cache = utils.Cache(None)
 
@@ -535,6 +537,49 @@ class Info(commands.Cog, name='Information'):
         embed.set_footer(text='Created at')
 
         await ctx.send(embed=embed)
+
+    @utils.is_bot_channel()
+    @commands.command(aliases=['msgraw'], hidden=True)
+    async def rawmsg(self, ctx: utils.Context, message: str):
+        """Gets the raw contents of the message.
+        
+        You need to invoke the command in the same channel where the message is
+        else you will need to provide the channel id as well.
+        
+        Usage:
+        • Using only message id: `msgraw messageId`
+        • Using channel and message id: `msgraw channelId-messageId`
+        """
+
+        try:
+            channel, msg = message.split('-')
+        except ValueError:
+            channel = ctx.channel.id
+            msg = message
+
+        try:
+            channel = int(channel)
+            msg = int(msg)
+        except Exception as e:
+            return await ctx.send(e)
+
+        try:
+            r = await self.bot.http.get_message(channel, msg)
+        except Exception as e:
+            return await ctx.send(e)
+        else:
+            data = json.dumps(r, indent=4)
+            
+            paginator = commands.Paginator(prefix='```json\n', max_size=2000, linesep='')
+
+            for d in data.split(','):
+                paginator.add_line(d)
+
+            embed = discord.Embed(colour=ctx.colour)
+
+            interface = PaginatorEmbedInterface(self.bot, paginator, owner=ctx.author, embed=embed)
+            await interface.send_to(ctx)
+        
 
 def setup(bot: utils.Bot):
     bot.add_cog(Info(bot))
