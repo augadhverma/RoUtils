@@ -482,5 +482,59 @@ class Info(commands.Cog, name='Information'):
         embed.add_field(name='Process', value=f'{memory_usage:.2f} MiB\n{cpu_usage:.2f}% CPU')
         await ctx.send(embed=embed)
 
+    @utils.is_admin()
+    @commands.group(invoke_without_command=True)
+    async def role(self, ctx: utils.Context, member: commands.Greedy[discord.Member], role: commands.Greedy[discord.Role]):
+        """Adds role(s) to member(s)
+        
+        You can provide multiple members and roles at once.
+        """
+
+        if member is None and role is None:
+            return await ctx.send(f'Missing either member or role parameeter')
+
+        for m in member:
+            try:
+                await m.add_roles(*role)
+            except Exception as e:
+                await ctx.send(e)
+
+        await ctx.tick(True)
+
+    @utils.is_admin()
+    @role.command()
+    async def remove(self, ctx: utils.Context, member: commands.Greedy[discord.Member], role: commands.Greedy[discord.Role]):
+        """Removes role(s) from member(s)."""
+
+        if member is None and role is None:
+            return await ctx.send(f'Missing either member or role parameeter')
+
+        for m in member:
+            try:
+                await m.remove_roles(*role)
+            except Exception as e:
+                await ctx.send(e)
+
+        await ctx.tick(True)
+
+    @utils.is_bot_channel()
+    @role.command(name='info')
+    async def role_info(self, ctx: utils.Context, *, role: discord.Role):
+        """Gives info on the role given."""
+
+        embed = discord.Embed(
+            title='Role Info',
+            colour=role.colour,
+            timestamp=role.created_at,
+            description=f'Name: {role.name}\n'\
+                        f'ID: `{role.id}`\n'\
+                        f'Members: {len(role.members)}\n'\
+                        f'Colour: {role.colour}'
+        )
+
+        embed.set_footer(text='Created at')
+
+        await ctx.send(embed=embed)
+
 def setup(bot: utils.Bot):
     bot.add_cog(Info(bot))
