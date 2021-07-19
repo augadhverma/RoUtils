@@ -22,10 +22,12 @@ import discord
 import os
 
 from discord.ext import commands
-from typing import Iterable, NamedTuple
+from typing import NamedTuple
 from dotenv import load_dotenv
 from utils.context import Context
 from .db import Client
+
+from jishaku.help_command import MinimalEmbedPaginatorHelp # Rewrite help using this
 
 load_dotenv()
 
@@ -76,7 +78,8 @@ class Bot(commands.Bot):
             allowed_mentions=discord.AllowedMentions.none(),
             owner_id=449897807936225290,
             case_insensitive=True,
-            intents=intents
+            intents=intents,
+            help_command=MinimalEmbedPaginatorHelp()
         )
 
         self.loop.create_task(self.create_session())
