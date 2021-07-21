@@ -31,6 +31,19 @@ class Tags(commands.Cog):
     def __init__(self, bot: utils.Bot) -> None:
         self.bot = bot
 
+    async def cog_command_error(self, ctx: utils.Context, error: commands.CommandError):
+        error = getattr(error, 'original', error)
+        if isinstance(error, RuntimeError):
+            await ctx.send(error)
+        elif isinstance(error, (commands.BadArgument, commands.MissingRequiredArgument)):
+            if ctx.command.qualified_name == 'tag':
+                await ctx.send_help(ctx.command)
+            else:
+                ctx.send(error)
+        else:
+            raise error
+
+        
 
     async def get_tag(self, name: str, *, update_uses=False) -> utils.TagEntry:
         document = await self.bot.tags.find_one({"$or":[{"name":{"$eq":name}}, {"aliases":{"$in":[name]}}]})
@@ -58,6 +71,26 @@ class Tags(commands.Cog):
 
         return tag
 
+    def extra_info(self, tag: utils.TagEntry) -> str:
+        has_content = False
+        has_image = True if tag.image else False
+        has_button = True if tag.url else False
+
+        if tag.content and tag.content != '\uFEFF':
+            has_content = True
+
+        to_return = (f'Extra Information about the tag:\n'
+                     f'→ Content: {has_content}\n'
+                     f'→ Has an Embed: {tag.embed}\n'
+                     f'→ Has an Embed Image: {has_image}\n'
+                     f'→ Has an URL Button: {has_button}\n')
+
+        if has_button:
+            to_return += f'The Button "{tag.url[0]}" points to <{tag.url[1]}>'
+
+        return to_return
+
+
     @utils.is_bot_channel()
     @commands.group(invoke_without_command=True)
     async def tag(self, ctx: utils.Context, *, name: str):
@@ -77,15 +110,20 @@ class Tags(commands.Cog):
 
     @utils.is_bot_channel()
     @tag.command()
-    async def info(self, ctx: utils.Context, *, name: str):
+    async def info(self, ctx: utils.Context, name: str, *, flags: utils.TagOptions):
         """Retrieves info about a tag.
 
         The info includes things like the owner and how many times it was used.
+
+        Flags:
+        `extra:` true/t/y/yes - Shows extra info on the ticket.
         """
 
         tag = await self.get_tag(name, update_uses=True)
 
-        await ctx.reply(embed=tag.to_embed())
+        m = await ctx.reply(embed=tag.to_embed())
+        if flags.extra.casefold() in ('true', 't', 'yes', 'y'):
+            await m.reply(self.extra_info(tag))
 
     @utils.is_bot_channel()
     @tag.command()
@@ -241,35 +279,27 @@ class Tags(commands.Cog):
 
     @utils.is_bot_channel()
     @tag.command()
-    async def raw(self, ctx: utils.Context, *, name: str):
+    async def raw(self, ctx: utils.Context, name: str, *, flags: utils.TagOptions):
         """Gets the raw content of the tag.
 
-        This is with markdown escaped. Useful for editing."""
+        This is with markdown escaped. Useful for editing.
+        
+        Flags:
+        `extra:` true/t/yes/y - Shows extra info on the tag.
+        """
 
         tag = await self.get_tag(name, update_uses=True)
-        to_add = '```\nInformation about the tag:\n'
-
+        
         if tag.content and tag.content != '\uFEFF':
             content = discord.utils.escape_markdown(tag.content)
         else:
             content = tag.content
-            to_add += '• The tag has no content\n'
-
-        url = tag.url or None
-
-        image = tag.image or None
-
-        is_embeded = 'is' if tag.embed else 'is not'
-
-        send = f'{content}\n'
-        if url:
-            to_add+=f'• The tag has the button: {url[0]} that points to {url[1]}\n'
-        if image:
-            to_add+=f'• The tag has the embed image as: {image}\n'
-
-        to_add+=f'• The tag {is_embeded} embeded.\n```'
         
-        await ctx.reply(send+to_add)
+        m = await ctx.reply(content)
+
+        if flags.extra.casefold() in ('true', 't', 'yes', 'y'):
+            await m.reply(self.extra_info(tag))
+        
 
     @utils.is_bot_channel()
     @tag.command()
@@ -385,7 +415,7 @@ class Tags(commands.Cog):
             await ctx.reply('The tag owner is still in this server.')
 
     @utils.is_bot_channel()
-    @tag.command()
+    @tag.command(aliases=['aliases'])
     async def alias(self, ctx: utils.Context, name: str, *, flags: utils.TagAlias):
         """Add or remove aliases from a tag.
         
