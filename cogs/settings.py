@@ -61,6 +61,7 @@ class Settings(commands.Cog):
         embed.add_field(name='Log Channel', value=channel)
         embed.add_field(name='Blacklisted Channels', value=disabled)
         embed.add_field(name='Prefixes', value='\n'.join(f'{i}. {p}' for i,p in enumerate(prefixes, 1)))
+        embed.add_field(name='Mute Role', value=f'<@&{settings["muteRole"]}>')
 
         await ctx.reply(embed=embed)
 
@@ -146,6 +147,17 @@ class Settings(commands.Cog):
         )
 
         await ctx.tick(True)
+
+    @settings.command(aliases=['mr', 'muted-role'])
+    async def muterole(self, ctx: utils.Context, *, role: Optional[discord.Role]):
+        """Sets or displays the muted role."""
+        settings = await self.bot.utils.find_one({'type':'settings'})
+        
+        if role:
+            await self.bot.utils.update_one({'type':'settings'}, {'$set':{'muteRole':role.id}})
+            await ctx.tick(True)
+        elif role is None:
+            await ctx.send(f'The current mute role is <@&{settings["muteRole"]}>')
 
     @commands.command()
     async def status(self, ctx: utils.Context, *, option: str):
