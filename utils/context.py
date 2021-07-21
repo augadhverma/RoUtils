@@ -61,8 +61,7 @@ class Context(commands.Context):
         except discord.HTTPException:
             pass
 
-    @discord.utils.copy_doc(discord.Message.reply)
-    async def reply(self, content=None, *, mention=False, **kwargs):
+    async def reply(self, content=None, *, mention=False, **kwargs) -> discord.Message:
         msg: discord.Message = self.message
 
         default_mentions = discord.AllowedMentions.none()
