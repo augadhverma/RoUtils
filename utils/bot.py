@@ -22,7 +22,8 @@ import discord
 import os
 
 from discord.ext import commands
-from typing import NamedTuple
+from jishaku.paginators import PaginatorEmbedInterface
+from typing import NamedTuple, Optional
 from dotenv import load_dotenv
 from utils.context import Context
 from .db import Client
@@ -44,6 +45,14 @@ initial_extensions = {
     'cogs.settings',
     'cogs.tags'
 }
+
+class TempMinimalHelp(MinimalEmbedPaginatorHelp):
+    async def send_pages(self):
+        destination = self.get_destination()
+        embed = discord.Embed(colour=discord.Colour.blue())
+
+        interface = PaginatorEmbedInterface(self.context.bot, self.paginator, owner=self.context.author, embed=embed)
+        await interface.send_to(destination)
 
 class VersionInfo(NamedTuple):
 	major: int
@@ -79,7 +88,7 @@ class Bot(commands.Bot):
             owner_id=449897807936225290,
             case_insensitive=True,
             intents=intents,
-            help_command=MinimalEmbedPaginatorHelp()
+            help_command=TempMinimalHelp()
         )
 
         self.loop.create_task(self.create_session())
@@ -123,3 +132,29 @@ class Bot(commands.Bot):
 
     def run(self):
         return super().run(TOKEN, reconnect=True)
+
+    async def get_or_fetch_member(self, guild: discord.Guild, member_id: int) -> Optional[discord.Member]:
+        """Looks up a member in cache or fetches if not found.
+
+        Parameters
+        ----------
+        guild : discord.Guild
+            The guild to look in.
+        member_id : int
+            The member ID to search for.
+
+        Returns
+        -------
+        Optional[discord.Member]
+            The member or None if not found.
+        """
+        member = guild.get_member(member_id)
+        if member:
+            return member
+
+        try:
+            member = await guild.fetch_member(member_id)
+        except discord.HTTPException:
+            return None
+        else:
+            return member
