@@ -181,7 +181,7 @@ class TagEntry:
     @url.setter
     def url(self, value: list[str, str]):
         if value is not None and not value[1].startswith('http'):
-            raise RuntimeError('Invalid URL was provided, please provide an URL that starts with http(s).')
+            raise commands.BadArgument('Invalid URL was provided, please provide an URL that starts with http(s).')
         self._url = value
 
     @property
@@ -191,7 +191,7 @@ class TagEntry:
     @image.setter
     def image(self, value: str):            
         if value is not None and not value.startswith('http'):
-            raise RuntimeError('Invalid URL was provided, please provide an URL that starts with http(s).')
+            raise commands.BadArgument('Invalid URL was provided, please provide an URL that starts with http(s).')
         self._image = value
 
     def to_send(self, *, timeout: Optional[float] = 180.0) -> list[str | discord.Embed, Optional[discord.ui.View]]:
@@ -277,4 +277,4 @@ class TagOptions(commands.FlagConverter, case_insensitive=True):
     url: Optional[str]
     image: Optional[str]
     embed: Optional[str] = commands.flag(default='false')
-    
+    extra: Optional[str] = commands.flag(default='false')
