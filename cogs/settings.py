@@ -157,7 +157,18 @@ class Settings(commands.Cog):
             await self.bot.utils.update_one({'type':'settings'}, {'$set':{'muteRole':role.id}})
             await ctx.tick(True)
         elif role is None:
-            await ctx.send(f'The current mute role is <@&{settings["muteRole"]}>')
+            role: discord.Role = ctx.guild.get_role(settings['muteRole'])
+            await ctx.send(f'Role: {role.mention} (ID: {role.id})\nMembers Muted: {len(role.members)}')
+
+    @settings.command()
+    async def log(self, ctx: utils.Context, *, channel: Optional[discord.TextChannel]):
+        """Sets or displays the log channel for the server"""
+        settings = await self.bot.utils.find_one({'type':'settings'})
+        if channel:
+            await self.bot.utils.update_one({'type':'settings'}, {'$set':{'log':channel.id}})
+            await ctx.tick(True)
+        elif channel is None:
+            await ctx.send(f'Current log channel is <#{settings["log"]}>')
 
     @commands.command()
     async def status(self, ctx: utils.Context, *, option: str):
