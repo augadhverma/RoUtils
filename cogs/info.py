@@ -19,7 +19,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 
 import datetime
-import json
 import time
 import discord
 import pkg_resources
@@ -275,8 +274,10 @@ class Info(commands.Cog, name='Information'):
     @commands.group(invoke_without_command=True)
     async def ticket(self, ctx: utils.Context, *, member: discord.Member=None):
         """Shows tentative tickets handled by a user."""
+        await ctx.loading()
         member = member or ctx.author
         now = utils.utcnow()
+        reference = None
         if now.month == 1:
             after = datetime.datetime(now.year, 12, now.day, now.hour, now.minute, now.second, now.microsecond, now.tzinfo)
         else:
@@ -295,6 +296,8 @@ class Info(commands.Cog, name='Information'):
                 for line in lines:
                     try:
                         user = await commands.UserConverter().convert(ctx, line.strip().split()[2])
+                        if reference is None:
+                            reference = msg
                     except:
                         pass
                     else:
@@ -319,7 +322,9 @@ class Info(commands.Cog, name='Information'):
             inline=False
         )
 
-        await ctx.send(embed=embed)
+        await ctx.reply(embed=embed)
+        await ctx.send(f'Reference Message: {reference.jump_url}', embeds=msg.embeds)
+        await ctx.loading(True)
             
     @utils.is_admin()
     @ticket.command()
@@ -358,6 +363,7 @@ class Info(commands.Cog, name='Information'):
         elif role:
             converter = commands.MemberConverter()
         entries = []
+        await ctx.loading()
         async for msg in channel.history(limit=None, after=after):
             if msg.embeds:
                 try:
@@ -409,6 +415,7 @@ class Info(commands.Cog, name='Information'):
         interface = PaginatorEmbedInterface(self.bot, paginator, owner=ctx.author, embed=embed)
 
         await interface.send_to(ctx)
+        await ctx.loading(True)
 
     @info.error
     async def info_err(self, ctx: utils.Context, error: commands.CommandError):
@@ -548,48 +555,6 @@ class Info(commands.Cog, name='Information'):
         embed.set_footer(text='Created at')
 
         await ctx.send(embed=embed)
-
-    @utils.is_bot_channel()
-    @commands.command(aliases=['msgraw'], hidden=True)
-    async def rawmsg(self, ctx: utils.Context, message: str):
-        """Gets the raw contents of the message.
-        
-        You need to invoke the command in the same channel where the message is
-        else you will need to provide the channel id as well.
-        
-        Usage:
-        • Using only message id: `msgraw messageId`
-        • Using channel and message id: `msgraw channelId-messageId`
-        """
-
-        try:
-            channel, msg = message.split('-')
-        except ValueError:
-            channel = ctx.channel.id
-            msg = message
-
-        try:
-            channel = int(channel)
-            msg = int(msg)
-        except Exception as e:
-            return await ctx.send(e)
-
-        try:
-            r = await self.bot.http.get_message(channel, msg)
-        except Exception as e:
-            return await ctx.send(e)
-        else:
-            data = json.dumps(r, indent=4)
-            
-            paginator = commands.Paginator(prefix='```json\n', max_size=2000, linesep='')
-
-            for d in data.split(','):
-                paginator.add_line(d)
-
-            embed = discord.Embed(colour=ctx.colour)
-
-            interface = PaginatorEmbedInterface(self.bot, paginator, owner=ctx.author, embed=embed)
-            await interface.send_to(ctx)
         
 
 def setup(bot: utils.Bot):
