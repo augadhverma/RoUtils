@@ -12,7 +12,7 @@ async def check_perms(ctx: Context, perms: dict, *, check=all) -> bool:
     if ctx.guild is None:
         return False
 
-    resolved = ctx.channel.permissions_for(ctx.author)
+    resolved = ctx.author.guild_permissions
     return check(getattr(resolved, name, None) == value for name, value in perms.items())
 
 def is_admin():
