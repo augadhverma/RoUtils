@@ -43,10 +43,17 @@ initial_extensions = {
     'jishaku',
     'cogs.info',
     'cogs.settings',
-    'cogs.tags'
+    'cogs.tags',
+    'cogs.mod',
+    'cogs.api'
 }
 
 class TempMinimalHelp(MinimalEmbedPaginatorHelp):
+    def __init__(self, **options):
+        paginator = options.pop('paginator', commands.Paginator(prefix=None, suffix=None, max_size=500))
+
+        super().__init__(paginator=paginator, **options)
+
     async def send_pages(self):
         destination = self.get_destination()
         embed = discord.Embed(colour=discord.Colour.blue())
