@@ -23,8 +23,11 @@ from typing import Optional
 from discord.ext import commands
 
 class Context(commands.Context):
+    message: discord.Message
 
     def __init__(self, **attrs):
+        from utils.bot import Bot
+        self.bot: Bot = attrs.get('bot', None)
         super().__init__(**attrs)
 
     def __repr__(self) -> str:
@@ -61,6 +64,17 @@ class Context(commands.Context):
         except discord.HTTPException:
             pass
 
+    async def loading(self, remove: bool = False) -> None:
+        emoji = '<a:loading:801422257221271592>'
+        try:
+            if remove:
+                await self.message.clear_reaction(emoji)
+                await self.tick(True)
+            else:
+                return await self.message.add_reaction(emoji)
+        except discord.HTTPException:
+            pass
+
     async def reply(self, content=None, *, mention=False, **kwargs) -> discord.Message:
         msg: discord.Message = self.message
 
@@ -83,3 +97,24 @@ class Context(commands.Context):
         if ref and isinstance(ref.resolved, discord.Message):
             return ref.resolved.to_reference()
         return None
+
+    @discord.utils.cached_property
+    def channel(self):
+        return self.message.channel
+
+    @discord.utils.cached_property
+    def guild(self):
+        return self.message.guild
+
+    async def post_log(self, **kwargs):
+        settings = await self.bot.utils.find_one({'type':'settings'})
+        guild: discord.Guild = self.message.guild
+
+        channel = guild.get_channel(settings['log'])
+        if channel is None:
+            try:
+                channel = await guild.fetch_channel(settings['log'])
+            except (discord.HTTPException, discord.InvalidData):
+                return await self.send('Fetching the log channel failed, cannot post log for the current action', delete_after=10.0)
+
+        return await channel.send(**kwargs)
