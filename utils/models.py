@@ -19,15 +19,20 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 
 import datetime
+import enum
+import time
 import aiohttp
 import discord
 import humanize
 
-from typing import Any, Optional, Union
+from typing import Any, List, Optional, Type, Union, TypeVar
 from discord.ext import commands
+from bson import ObjectId
 
 from .bot import Bot
 from .roblox import User, time_roblox
+
+Timestamp = TypeVar('Timestamp', float, int)
 
 def utcnow() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
@@ -54,7 +59,7 @@ def format_date(dt) -> str:
     str
         The timestamp to return.
     """
-    if dt is None:
+    if dt is None or not isinstance(dt, datetime.datetime):
         return 'N/A'
 
     return f'{format_dt(dt, "F")} ({format_dt(dt, "R")})'
@@ -278,3 +283,148 @@ class TagOptions(commands.FlagConverter, case_insensitive=True):
     image: Optional[str]
     embed: Optional[str] = commands.flag(default='false')
     extra: Optional[str] = commands.flag(default='false')
+
+class InfractionType(enum.Enum):
+    autowarn = 0
+    automute = 1
+    warn = 2
+    mute = 3
+    kick = 4
+    softban = 5
+    ban = 6
+    unban = 7
+
+    def __str__(self) -> str:
+        return self.name
+
+    def __int__(self) -> int:
+        return self.value
+
+    def __repr__(self) -> str:
+        return f"<InfractionType name='{self.name}' value={self.value}>"
+
+class InfractionColour(enum.Enum):
+    autowarn = discord.Colour.teal()
+    automute = discord.Colour.teal()
+    warn = discord.Colour.teal()
+    mute = discord.Colour.orange()
+    kick = discord.Colour.red()
+    softban = discord.Colour.red()
+    ban = discord.Colour.dark_red()
+    unban = discord.Colour.green()
+
+    def __str__(self) -> str:
+        return self.name
+
+    def __int__(self) -> int:
+        return int(self.value)
+
+
+InfractionColor = InfractionColour
+
+I = TypeVar('I', bound='InfractionEntry')
+
+class InfractionEntry:
+    def __init__(self, document: dict):
+        self._document = document
+        self._id: ObjectId = document['_id']
+        self.type = InfractionType(document['type'])
+        self.mod_id: int = document['moderator']
+        self.offender_id: int = document['offender']
+        self.time = self._id.generation_time
+        self.id: int = document['id']
+        self._until: Optional[Timestamp] = document.get('until', None)
+        self._reason: str = document['reason']
+
+    def __int__(self) -> int:
+        return self.id
+
+    def __eq__(self, o: object) -> bool:
+        # why is this even here
+        return isinstance(o, self.__class__) and o._id == self._id
+
+    def __ne__(self, o: object) -> bool:
+        # why is this even here
+        return not self.__eq__(o)
+
+    def __repr__(self) -> str:
+        return (
+            f'<InfractionEntry _id={self._id!r} id={self.id} type={self.type!r} '
+            f'mod_id={self.mod_id} offender_id={self.offender_id} time={self.time!r} until={self.until}>'
+        )
+
+    def __str__(self) -> str: # "markdownified" version
+        return (
+            f'**Offender:** <@{self.offender_id}> `({self.offender_id})`\n'
+            f'**Moderator:** <@{self.mod_id}> `({self.mod_id})`\n'
+            f'**Reason:** {self._reason}'
+        )
+
+    @property
+    def case(self) -> str:
+        return f'Case #{self.id} | {self.type.name.capitalize()}'
+
+    @property
+    def until(self) -> Optional[Timestamp]:
+        return self._until
+
+    @until.setter
+    def until(self, value):
+        if not isinstance(value, (Timestamp, float)):
+            raise TypeError(f'Expected a POSIX timestamp but recieved {value.__class__.__name__}')
+        self._until = value
+
+    @property
+    def reason(self) -> str:
+        return self._reason
+
+    @reason.setter
+    def reason(self, value: str):
+        self._reason = value
+
+    def to_embed(self) -> discord.Embed:
+        embed = discord.Embed(
+            title=f'Case #{self.id} | {self.type.name.capitalize()}',
+            description = self.__str__(),
+            colour = int(InfractionColour[self.type.name]),
+            timestamp = self.time
+        )
+        
+        if self._until:
+            embed.add_field(name='Valid Until', value=format_dt(datetime.datetime.fromtimestamp(self._until), 'F'))
+
+        embed.set_footer(text='Infraction issued at')
+
+        return embed
+
+    def to_offender_embed(self) -> discord.Embed:
+        embed = discord.Embed(
+            title = f'Case #{self.id} | {self.type.name.capitalize()}',
+            description = f'**Reason:** {self.reason}',
+            colour = InfractionColour[self.type.name].value,
+            timestamp = self.time
+        )
+
+        if self._until:
+            embed.add_field(name='Valid Until', value=format_dt(datetime.datetime.fromtimestamp(self._until), 'F'))
+
+        embed.set_footer(text='Infraction issued at')
+
+        return embed
+
+    def to_small_embed(self) -> discord.Embed:
+        embed = discord.Embed(
+            colour = InfractionColour[self.type.name].value,
+            description = f'<@{self.offender_id}> (`{self.offender_id}`) was infracted | **{self.type}**',
+            timestamp = utcnow()
+        )
+        embed.set_footer(text=f'Case #{self.id}')
+
+        return embed
+
+    @property
+    def entry(self) -> str:
+        return (
+            f'**Case #{self.id} | {self.type.name.capitalize()} | {self.time.strftime("%Y-%m-%d")}**\n'
+            f'{self.__str__()}'
+        )
