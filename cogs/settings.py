@@ -23,7 +23,8 @@ import utils
 import random
 
 from discord.ext import commands, tasks
-from typing import Literal, Optional
+from typing import List, Literal, Optional
+from jishaku.paginators import PaginatorEmbedInterface
 
 class Settings(commands.Cog):
     def __init__(self, bot: utils.Bot) -> None:
@@ -169,6 +170,104 @@ class Settings(commands.Cog):
             await ctx.tick(True)
         elif channel is None:
             await ctx.send(f'Current log channel is <#{settings["log"]}>')
+
+    @settings.group(aliases=['badwords'], invoke_without_command=True)
+    async def badword(self, ctx: utils.Context):
+        """Shows all bad words set."""
+
+        embed = discord.Embed(
+            title = 'All Bad Words Registered',
+            colour = discord.Colour.blue(),
+            timestamp = utils.utcnow()
+        )
+
+        settings = await self.bot.utils.find_one({'type':'settings'})
+        words: List[str] = settings.get('badWords', [])
+
+        paginator = commands.Paginator(prefix=None, suffix=None, max_size=500)
+        for i, w in enumerate(words, 1):
+            paginator.add_line(f'{i}. {w}')
+
+        interface = PaginatorEmbedInterface(self.bot, paginator, owner=ctx.author, embed=embed)
+        try:
+            await interface.send_to(ctx)
+        except Exception as e:
+            await ctx.send(e)
+
+    @badword.command(name='add')
+    async def add_badword(self, ctx: utils.Context, *, word: str):
+        """Adds a bad word to the database."""
+        settings = await self.bot.utils.find_one({'type':'settings'})
+
+        words: List[str] = settings.get('badWords', [])
+        for w in word.split():
+            words.append(w)
+        words = list(set(words))
+        await self.bot.utils.update_one({'type':'settings'}, {'$set':{'badWords':words}})
+        await ctx.tick(True)
+
+    @badword.command(name='remove')
+    async def remove_badword(self, ctx: utils.Context, *, word: str):
+        """Removes a word from the database."""
+        settings = await self.bot.utils.find_one({'type':'settings'})
+        words: List[str] = settings['badWords']
+        try:
+            words.remove(word)
+            await self.bot.utils.update_one({'type':'settings'}, {'$set':{'badWords':words}})
+        except ValueError:
+            pass
+        finally:
+            await ctx.tick(True)
+
+    @settings.group(name='domain', aliases=['links', 'link'], invoke_without_command=True)
+    async def link(self, ctx: utils.Context):
+        """Shows all links that are whitelisted."""
+
+        embed = discord.Embed(
+            title = 'All Whitelisted links',
+            colour = discord.Colour.blue(),
+            timestamp = utils.utcnow()
+        )
+
+        settings = await self.bot.utils.find_one({'type':'settings'})
+        words: List[str] = settings.get('linkWhitelist', [])
+
+        paginator = commands.Paginator(prefix=None, suffix=None, max_size=500)
+        for i, w in enumerate(words, 1):
+            paginator.add_line(f'{i}. {w}')
+
+        interface = PaginatorEmbedInterface(self.bot, paginator, owner=ctx.author, embed=embed)
+        try:
+            await interface.send_to(ctx)
+        except Exception as e:
+            await ctx.send(e)
+            raise e
+
+    @link.command(name='add')
+    async def add_link(self, ctx: utils.Context, domain: str):
+        """Adds a domain to be whitelisted"""
+
+        settings = await self.bot.utils.find_one({'type':'settings'})
+
+        links: List[str] = settings.get('linkWhitelist', [])
+        links.append(domain)
+        links = list(set(links))
+        await self.bot.utils.update_one({'type':'settings'}, {'$set':{'linkWhitelist':links}})
+        await ctx.tick(True)
+
+    @link.command(name='remove')
+    async def remove_link(self, ctx: utils.Context, domain: str):
+        """Removes a word from the database."""
+        settings = await self.bot.utils.find_one({'type':'settings'})
+        words: List[str] = settings['linkWhitelist']
+        try:
+            words.remove(domain)
+            await self.bot.utils.update_one({'type':'settings'}, {'$set':{'linkWhitelist':words}})
+        except ValueError:
+            pass
+        finally:
+            await ctx.tick(True)
+
 
     @commands.command()
     async def status(self, ctx: utils.Context, *, option: str):
