@@ -39,7 +39,7 @@ class Tags(commands.Cog):
             if ctx.command.qualified_name == 'tag':
                 await ctx.send_help(ctx.command)
             else:
-                ctx.send(error)
+                await ctx.send(str(error))
         else:
             raise error
 
@@ -489,7 +489,7 @@ class Tags(commands.Cog):
     async def _id(self, ctx: utils.Context, *, name: str):
         """Get a tag by using its id."""
 
-        tag = await self.bot.tags.find_one({'_id':ObjectId('60f47143c6a67f55d3e70ef3')})
+        tag = await self.bot.tags.find_one({'_id':ObjectId(name)})
         if tag is None:
             return await ctx.reply('Invalid id provided, I could not find the tag using that id.')
 

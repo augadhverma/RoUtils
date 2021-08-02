@@ -87,8 +87,8 @@ class FakeUser(User):
             super().__init__({
                 'name':'Unverified User',
                 'id':0,
-                'display_name':'Unverified User',
-                'created_at':time_roblox(utcnow())
+                'displayName':'Unverified User',
+                'created':'None'
             })
 
 class RoWifiUser(User):

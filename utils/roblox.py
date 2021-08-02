@@ -21,7 +21,10 @@ import datetime
 from utils import CaseInsensitiveDict
 
 def roblox_time(time: str) -> datetime.datetime:
-    return datetime.datetime.strptime(time, '%Y-%m-%dT%H:%M:%S.%fZ')
+    try:
+        return datetime.datetime.strptime(time, '%Y-%m-%dT%H:%M:%S.%fZ')
+    except (ValueError, TypeError):
+        return None
 
 def time_roblox(time: datetime.datetime = None) -> str:
     time = time or datetime.datetime.now(datetime.timezone.utc)
