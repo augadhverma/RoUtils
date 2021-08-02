@@ -257,6 +257,9 @@ class Moderation(commands.Cog):
 
         await ctx.message.delete()
         for user in offender:
+            if can_execute_action(ctx, ctx.author, user) is False:
+                await ctx.send(f'Cannot do action on {user} due to role hierarchy.')
+                continue
             infraction = await self.create_infraction(
                 InfractionType.warn,
                 ctx.author,
@@ -384,6 +387,9 @@ class Moderation(commands.Cog):
 
         await ctx.message.delete()
         for user in offender:
+            if can_execute_action(ctx, ctx.author, user) is False:
+                await ctx.send(f'Cannot do action on {user} due to role hierarchy.')
+                continue
             infraction = await self.create_infraction(
                 InfractionType.kick,
                 ctx.author,
@@ -405,6 +411,9 @@ class Moderation(commands.Cog):
 
         await ctx.message.delete()
         for user in offender:
+            if can_execute_action(ctx, ctx.author, user) is False:
+                await ctx.send(f'Cannot do action on {user} due to role hierarchy.')
+                continue
             infraction = await self.create_infraction(
                 InfractionType.ban,
                 ctx.author,
@@ -488,6 +497,9 @@ class Moderation(commands.Cog):
         await ctx.message.delete()
         audit_reason = reason+f' | Moderator: {ctx.author} ({ctx.author.id})'
         for user in offender:
+            if can_execute_action(ctx, ctx.author, user) is False:
+                await ctx.send(f'Cannot do action on {user} due to role hierarchy.')
+                continue
             try:
                 await ctx.guild.ban(user, reason=audit_reason, delete_message_days=7)
                 await ctx.guild.unban(user, reason=audit_reason)
@@ -663,6 +675,9 @@ class Moderation(commands.Cog):
             raise NoMuteRole()
 
         for user in offender:
+            if can_execute_action(ctx, ctx.author, user) is False:
+                await ctx.send(f'Cannot do action on {user} due to role hierarchy.')
+                continue
 
             if role in user.roles:
                 return await ctx.send('The given user is already muted.')
@@ -781,7 +796,63 @@ class Moderation(commands.Cog):
     async def before_infraction_check(self) -> None:
         await self.bot.wait_until_ready()
 
-    
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        # Ignoring bots
+        if message.author.bot:
+            return
+
+        # Ignore DMs
+        if message.guild is None:
+            return
+
+        # Ignoring Staff
+        if message.author.guild_permissions.manage_messages:
+            return
+
+        settings = await self.bot.utils.find_one({'type':'settings'})   
+
+        badwords: List[str] = settings['badWords']
+        links: List[str] = settings['linkWhitelist']
+        for word in badwords:
+            regex = re.compile('\s*'.join(word), re.IGNORECASE)
+            L = regex.findall(message.content)
+            if L:
+                await message.delete()
+
+                infraction = await self.create_infraction(
+                    InfractionType.autowarn,
+                    self.bot.user,
+                    message.author,
+                    reason=f'Using a blacklisted word ({L[0]})'
+                )
+
+                ctx = await self.bot.get_context(message, cls=Context)
+
+                await self.on_infraction(ctx, message.author, infraction)
+                return
+        
+        url_regex = re.compile('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', re.IGNORECASE)
+
+        for link in links:
+            if link in message.content.lower():
+                return
+        else:
+            L = url_regex.findall(message.content)
+            if L:
+                await message.delete()
+
+                infraction = await self.create_infraction(
+                    InfractionType.autowarn,
+                    self.bot.user,
+                    message.author,
+                    reason=f'Using a blacklisted link ({L[0]})'
+                )
+
+                ctx = await self.bot.get_context(message, cls=Context)
+
+                await self.on_infraction(ctx, message.author, infraction)
+                return
 
 def setup(bot: utils.Bot):
     bot.add_cog(Moderation(bot))
