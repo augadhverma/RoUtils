@@ -22,13 +22,11 @@ import discord
 import os
 
 from discord.ext import commands
-from jishaku.paginators import PaginatorEmbedInterface
 from typing import NamedTuple, Optional
 from dotenv import load_dotenv
 from utils.context import Context
 from .db import Client
 
-from jishaku.help_command import MinimalEmbedPaginatorHelp # Rewrite help using this
 
 load_dotenv()
 
@@ -45,21 +43,11 @@ initial_extensions = {
     'cogs.settings',
     'cogs.tags',
     'cogs.mod',
-    'cogs.api'
+    'cogs.api',
+    'cogs.logs',
+    'cogs.handler',
+    'cogs.help'
 }
-
-class TempMinimalHelp(MinimalEmbedPaginatorHelp):
-    def __init__(self, **options):
-        paginator = options.pop('paginator', commands.Paginator(prefix=None, suffix=None, max_size=500))
-
-        super().__init__(paginator=paginator, **options)
-
-    async def send_pages(self):
-        destination = self.get_destination()
-        embed = discord.Embed(colour=discord.Colour.blue())
-
-        interface = PaginatorEmbedInterface(self.context.bot, self.paginator, owner=self.context.author, embed=embed)
-        await interface.send_to(destination)
 
 class VersionInfo(NamedTuple):
 	major: int
@@ -95,7 +83,6 @@ class Bot(commands.Bot):
             owner_id=449897807936225290,
             case_insensitive=True,
             intents=intents,
-            help_command=TempMinimalHelp()
         )
 
         self.loop.create_task(self.create_session())
@@ -103,8 +90,8 @@ class Bot(commands.Bot):
         self.colour = discord.Colour.blue()
         self.footer = 'RoUtils'
 
-        self.version_info = VersionInfo(major=2, minor=0, micro=0, releaselevel='beta', serial=0)
-        self.__version__ = '2.0.0b'
+        self.version_info = VersionInfo(major=2, minor=0, micro=0, releaselevel='final', serial=0)
+        self.__version__ = '2.0.0'
 
         for cog in initial_extensions:
             try:
@@ -126,6 +113,8 @@ class Bot(commands.Bot):
             self.infractions = Client(URI, db, 'Infractions')
         if not hasattr(self, 'utils'):
             self.utils = Client(URI, db, 'Utils')
+        if not hasattr(self, 'errors'):
+            self.errors = Client(URI, db, 'Errors')
             
     async def on_ready(self) -> None:
         print(f'Ready {self.user} (ID: {self.user.id})')
