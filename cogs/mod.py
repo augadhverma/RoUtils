@@ -932,13 +932,13 @@ class Moderation(commands.Cog):
                 await member.edit(nick=name)
                 return
 
-    @commands.Cog.listener()
-    async def on_member_join(self, member: discord.Member):
-        await self.check_member_name(member)
+    # @commands.Cog.listener()
+    # async def on_member_join(self, member: discord.Member):
+    #     await self.check_member_name(member)
 
-    @commands.Cog.listener()
-    async def on_member_update(self, before: discord.Member, after: discord.Member):
-        await self.check_member_name(after)
+    # @commands.Cog.listener()
+    # async def on_member_update(self, before: discord.Member, after: discord.Member):
+    #     await self.check_member_name(after)
 
 def setup(bot: utils.Bot):
     bot.add_cog(Moderation(bot))
