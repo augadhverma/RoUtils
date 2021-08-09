@@ -22,7 +22,10 @@ import discord
 import datetime
 import utils
 import re
+import string
+import random
 
+from utils.checks import INTERN
 from collections import Counter
 from jishaku.paginators import PaginatorEmbedInterface
 from typing import List, Optional, Tuple
@@ -254,6 +257,11 @@ class Moderation(commands.Cog):
     @commands.command()
     async def warn(self, ctx: Context, offender: commands.Greedy[discord.Member], *, reason: ActionReason):
         """Warns a user."""
+        if ctx.replied_reference:
+            message = await ctx.channel.fetch_message(ctx.replied_reference.message_id)
+            offender = [message.author]
+            
+            await message.delete()
 
         await ctx.message.delete()
         for user in offender:
@@ -352,7 +360,12 @@ class Moderation(commands.Cog):
         await member.edit(nick=nickname)
         await ctx.tick(True)
 
-    # Add moderated nickname
+    @utils.is_intern()
+    @commands.command()
+    async def mod(self, ctx: Context, member: commands.Greedy[discord.Member]):
+        for m in member:
+            await m.edit(nick=self.mod_name())
+        await ctx.tick(True)        
 
     @utils.is_bot_channel()
     @commands.command(aliases=['warnings'])
@@ -589,6 +602,7 @@ class Moderation(commands.Cog):
             await ctx.send(f'Successfully removed {deleted} messages.', delete_after=10)
         else:
             await ctx.send(to_send, delete_after=10)
+        await ctx.message.delete()
 
     @utils.is_staff()
     @commands.group()
@@ -604,6 +618,8 @@ class Moderation(commands.Cog):
 
         else:
             if member:
+                if search is None:
+                    return await ctx.send('Missing the `search` parameter to search the number of messages to delete.')
                 await ctx.invoke(self.user, member=member, search=search)
             elif search:
                 await ctx.invoke(self.remove_all, search=search)
@@ -703,10 +719,13 @@ class Moderation(commands.Cog):
             if error.param.name == 'reason':
                 args = ctx.args
                 content = ctx.message.content
-                await ctx.invoke(self.mute, offender=args[2], time=10800, reason=content.split(' ')[-1])
+                return await ctx.invoke(self.mute, offender=args[2], time=10800, reason=content.split(' ')[-1])
+            else:
+                cmd = ctx.command
+                return await ctx.reply(f'You forgot to provide the `{error.param.name}` argument while using the command. Refer `{ctx.clean_prefix}{cmd.qualified_name} {cmd.signature}`?')
 
-        else:
-            raise error
+        
+        raise error
 
     @utils.is_staff()
     @commands.command()
@@ -730,7 +749,7 @@ class Moderation(commands.Cog):
 
         await ctx.tick(True)
 
-    @tasks.loop(minutes=5)
+    @tasks.loop(minutes=1)
     async def infraction_check(self) -> None:
         settings = await self.bot.utils.find_one({'type':'settings'})
         if settings:
@@ -779,16 +798,17 @@ class Moderation(commands.Cog):
             document = InfractionEntry(document)
             
             until = document.until
-            now = document.time.timestamp()
+            now = utils.utcnow().timestamp()
             if until is None:
                 continue
-
-            if not until <= now:
+            if not now >= until:
                 continue
+
             if document.type.value in (1, 3):
                 await unmute(document)
 
             await self.bot.infractions.delete_one({'_id':document._id})
+            print(f'Document {document.id} was deleted.\nRepr: {repr(document)}\nDict: {document._document}')
             await post_log(content='Infraction Removed:',embed=document.to_embed())
         
 
@@ -810,7 +830,12 @@ class Moderation(commands.Cog):
         if message.author.guild_permissions.manage_messages:
             return
 
-        settings = await self.bot.utils.find_one({'type':'settings'})   
+        if INTERN in [r.id for r in message.author.roles]:
+            return
+
+        settings = await self.bot.utils.find_one({'type':'settings'})
+        ctx = await self.bot.get_context(message, cls=Context)
+
 
         badwords: List[str] = settings['badWords']
         links: List[str] = settings['linkWhitelist']
@@ -818,7 +843,10 @@ class Moderation(commands.Cog):
             regex = re.compile('\s*'.join(word), re.IGNORECASE)
             L = regex.findall(message.content)
             if L:
-                await message.delete()
+                try:
+                    await message.delete()
+                except discord.NotFound:
+                    return
 
                 infraction = await self.create_infraction(
                     InfractionType.autowarn,
@@ -826,8 +854,6 @@ class Moderation(commands.Cog):
                     message.author,
                     reason=f'Using a blacklisted word ({L[0]})'
                 )
-
-                ctx = await self.bot.get_context(message, cls=Context)
 
                 await self.on_infraction(ctx, message.author, infraction)
                 return
@@ -840,7 +866,10 @@ class Moderation(commands.Cog):
         else:
             L = url_regex.findall(message.content)
             if L:
-                await message.delete()
+                try:
+                    await message.delete()
+                except discord.NotFound:
+                    return
 
                 infraction = await self.create_infraction(
                     InfractionType.autowarn,
@@ -849,10 +878,67 @@ class Moderation(commands.Cog):
                     reason=f'Using a blacklisted link ({L[0]})'
                 )
 
-                ctx = await self.bot.get_context(message, cls=Context)
+                await self.on_infraction(ctx, message.author, infraction)
+                return
+        
+        invite_regex = re.compile('(?:https?://)?discord(?:app)?\.(?:com/invite|gg)/[a-zA-Z0-9]+/?', re.IGNORECASE)
+
+        L = invite_regex.findall(message.content)
+        if L:
+            try:
+                invite = await commands.InviteConverter().convert(ctx, L[0])
+                if invite.guild == ctx.guild:
+                    return
+            except commands.BadArgument:
+                return
+            else:
+                try:
+                    await message.delete()
+                except discord.HTTPException:
+                    return
+
+                infraction = await self.create_infraction(
+                    InfractionType.autowarn,
+                    self.bot.user,
+                    message.author,
+                    reason=f'Using a blacklisted invite ({L[0]})'
+                )
 
                 await self.on_infraction(ctx, message.author, infraction)
                 return
+    @staticmethod
+    def mod_name():
+        letters = string.ascii_letters + string.digits
+        return f'Moderated Nickname {"".join(random.sample(letters, k=10))}'
+
+    async def check_member_name(self, member: discord.Member):
+        name = self.mod_name()
+        valid_letters = string.ascii_letters + string.digits
+        valid_in_name = 0
+        for L in member.display_name:
+            if L in valid_letters:
+                valid_in_name+=1
+
+        if valid_in_name <= 3:
+            await member.edit(nick=name)
+            return
+
+        settings = await self.bot.utils.find_one({'type':'settings'})
+        badwords: List[str] = settings['badWords']
+        for word in badwords:
+            regex = re.compile('\s*'.join(word), re.IGNORECASE)
+            L = regex.findall(member.display_name)
+            if L:
+                await member.edit(nick=name)
+                return
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        await self.check_member_name(member)
+
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        await self.check_member_name(after)
 
 def setup(bot: utils.Bot):
     bot.add_cog(Moderation(bot))
