@@ -1,7 +1,6 @@
 """
-Replaces the old help command.
-
-Copyright (C) 2021  ItsArtemiz (Augadh Verma)
+Help Command Module - The bot's help command.
+Copyright (C) 2021  Augadh Verma
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -14,133 +13,119 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-from unicodedata import decomposition
+from __future__ import annotations
+
 import discord
 
+from typing import List, Mapping, Optional, Union
 from discord.ext import commands
-from datetime import datetime
-from bot import RoUtils
-from typing import Mapping, Union
+from utils import Bot, Context, utcnow
 
-class CustomHelp(commands.HelpCommand):
+class HelpCmd(commands.HelpCommand):
+    context: Context
+
     def __init__(self, **options):
-        try:
-            self.colour = options['colour']
-        except KeyError:
-            self.colour = options.get('color', 0x2F3136)
-        self.footer = options.get('footer', 'RoUtils')
+        show_hidden: bool = options.pop('show_hidden', False)
+        verify_checks: bool = options.pop('verify_checks', True)
 
-        super().__init__(
-            command_attrs = {
-                'help':'Shows this help message.',
-                'usage':'[command/category]'
-            },
-            **options
-        )
+        command_attrs = {
+            'help':'Shows this message',
+            'usage':'[command]'
+        }
+        
+        super().__init__(show_hidden=show_hidden, verify_checks=verify_checks, command_attrs=command_attrs, **options)
 
-    def command_usage(self, cmd:Union[commands.Command, commands.Group]) -> str:
-        return f"{cmd.qualified_name} {cmd.signature}"
+    def get_command_signature(self, ctx: Context, command):
+        if ctx is None or not ctx.valid:
+            clean_prefix = ''
+        else:
+            clean_prefix = ctx.clean_prefix
+        cmd = command
+        return f'`{clean_prefix}{cmd.qualified_name} {cmd.signature}`'
 
-    def command_help(self, cmd:Union[commands.Command, commands.Group]) -> str:
-        return cmd.help if cmd.help else 'No help provided...'
+    def get_command_help(self, command: Union[commands.Command, commands.Group]):
+        return command.help or 'No help provided...'
 
-    async def send_bot_help(self, mapping:Mapping):
+    async def send_bot_help(self, mapping: Mapping[Optional[commands.Cog], List[commands.Command]]):
         embed = discord.Embed(
-            colour = self.colour,
-            title = 'Help',
-            description = f'Type `{self.clean_prefix}help [command/category]` for more info on a command or a category.',
-            timestamp = datetime.utcnow()
+            colour=self.context.colour,
+            title='Help',
+            description=f'Type `{self.context.clean_prefix}help [command]` for more information on a command.',
+            timestamp=utcnow()
         )
-        embed.set_footer(text=self.footer)
 
         for cog, cmds in mapping.items():
             if cog and cmds:
-                f = await self.filter_commands(cmds, sort=True)
-                if f:
+                filtered = await self.filter_commands(cmds, sort=True)
+                if filtered:
                     try:
                         embed.add_field(
-                            name = cog.qualified_name,
-                            value = ', '.join([f'`{c.name}`' for c in f]),
-                            inline = False
+                            name=cog.qualified_name,
+                            value=', '.join(f'`{c.name}`' for c in filtered),
+                            inline=False
                         )
                     except:
                         pass
+        
+        await self.context.send(embed=embed)
 
-        await self.get_destination().send(embed=embed)
-
-    async def send_command_help(self, command:Union[commands.Command, commands.Group]):
-        # Making one command for bot group and command help
+    async def send_command_help(self, command: Union[commands.Command, commands.Group]):
         embed = discord.Embed(
-            title = 'Help',
-            description = self.command_help(command),
-            colour = self.colour,
-            timestamp = datetime.utcnow()
+            title=f'Help',
+            description=self.get_command_help(command),
+            colour=self.context.colour,
+            timestamp=utcnow()
         )
-        embed.set_footer(text=self.footer)
+
+        try:
+            can_run = await command.can_run(self.context)
+        except:
+            can_run = False
+
+        if can_run:
+            text='You can run this command'
+        else:
+            text='You cannot run this command'
+
+        embed.set_footer(text=text)
 
         embed.add_field(
-            name = 'Usage',
-            value = f'`{self.command_usage(command)}`',
-            inline = False
+            name='Usage',
+            value=self.get_command_signature(self.context, command),
+            inline=False
         )
 
         if command.aliases:
             embed.add_field(
-                name = 'Aliases',
-                value = ', '.join([f'`{c}`' for c in command.aliases]),
-                inline = False
+                name='Aliases',
+                value=', '.join(f'`{c}`' for c in command.aliases),
+                inline=False
             )
 
         if isinstance(command, commands.Group):
-            f = await self.filter_commands(command.commands, sort=True)
-            if f:
+            filtered = await self.filter_commands(command.commands)
+            if filtered:
                 embed.add_field(
-                    name = 'Subcommands',
-                    value = ', '.join([f'`{c.name}`' for c in f]),
-                    inline = False
+                    name='Subcommands',
+                    value=', '.join(f'`{c.name}`' for c in filtered),
+                    inline=False
                 )
 
-        await self.get_destination().send(embed=embed)
+        await self.context.send(embed=embed)
 
     send_group_help = send_command_help
 
-    async def send_cog_help(self, cog:commands.Cog):
-        embed = discord.Embed(
-            title = f'Category: {cog.qualified_name}',
-            colour = self.colour,
-            timestamp = datetime.utcnow()
-        )
-
-        embed.set_footer(text = self.footer)
-
-        if cog.description:
-            embed.description = cog.description
-
-        f = await self.filter_commands(cog.get_commands(), sort=True)
-        if f:
-            embed.add_field(
-                name = 'Commands:',
-                value = ', '.join([f'`{c.name}`' for c in f]),
-                inline = False
-            )
-
-        await self.get_destination().send(embed=embed)
-
-
-class Help(commands.Cog):
-    """ RoUtils' help command. """
-    def __init__(self, bot:RoUtils):
+class BotHelp(commands.Cog):
+    def __init__(self, bot: Bot):
         self.bot = bot
         self.bot._original_help_cmd = bot.help_command
-        self.bot.help_command = CustomHelp(colour=self.bot.invisible_colour, footer=self.bot.footer)
-        self.bot.help_command.cog = self
+        self.bot.help_command = HelpCmd()
 
     def cog_unload(self):
         self.bot.help_command = self.bot._original_help_cmd
 
-
-def setup(bot:RoUtils):
-    bot.add_cog(Help(bot))
+def setup(bot: Bot):
+    bot.add_cog(BotHelp(bot))

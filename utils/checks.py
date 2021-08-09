@@ -1,85 +1,61 @@
 from discord.ext import commands
 
+from .context import Context
 
 INTERN = 783068153856131072
-STAFF = 652203841978236940
-SENIORSTAFF = 693896132882989086
-MANAGEMENT = 671634821323423754
-COUNCIL = 626860276045840385
 
-BOTCHANNEL = 678198477108543518
+async def check_perms(ctx: Context, perms: dict, *, check=all) -> bool:
+    is_owner = await ctx.bot.is_owner(ctx.author)
+    if is_owner:
+        return True
 
-def admin():
-    async def pred(ctx:commands.Context):
-        if await ctx.bot.is_owner(ctx.author):
-            return True
-        try:
-            roles = [r.id for r in ctx.author.roles]
-        except AttributeError:
-            return False
-        else:
-            if (MANAGEMENT in roles) or (COUNCIL in roles):
-                return True
-            else:
-                return False
+    if ctx.guild is None:
+        return False
+
+    resolved = ctx.author.guild_permissions
+    return check(getattr(resolved, name, None) == value for name, value in perms.items())
+
+def is_admin():
+    async def pred(ctx: Context):
+        return await check_perms(ctx, {'administrator':True})
     return commands.check(pred)
 
-def seniorstaff():
-    async def pred(ctx:commands.Context):
-        if await ctx.bot.is_owner(ctx.author):
-            return True
-        try:
-            roles = [r.id for r in ctx.author.roles]
-        except AttributeError:
-            return False
-        else:
-            if (MANAGEMENT in roles) or (COUNCIL in roles) or (SENIORSTAFF in roles):
-                return True
-            else:
-                return False
+def is_staff(*, senior=False):
+    if senior:
+        check=all
+    else:
+        check=any
+    async def pred(ctx: Context):
+        return await check_perms(ctx, {'manage_messages':True, 'manage_nicknames':True}, check=check)
     return commands.check(pred)
 
-def staff():
-    async def pred(ctx:commands.Context):
-        if await ctx.bot.is_owner(ctx.author):
-            return True
-        try:
-            roles = [r.id for r in ctx.author.roles]
-        except AttributeError:
-            return False
-        else:
-            if (MANAGEMENT in roles) or (COUNCIL in roles) or (SENIORSTAFF in roles) or (STAFF in roles):
-                return True
-            else:
-                return False
-    return commands.check(pred)
 
-def intern():
-    async def pred(ctx:commands.Context):
-        if await ctx.bot.is_owner(ctx.author):
-            return True
-        try:
-            roles = [r.id for r in ctx.author.roles]
-        except AttributeError:
-            return False
-        else:
-            if (MANAGEMENT in roles) or (COUNCIL in roles) or (SENIORSTAFF in roles) or (STAFF in roles) or (INTERN in roles):
-                return True
-            else:
-                return False
-    return commands.check(pred)
-
-def botchannel():
-    async def pred(ctx:commands.Context):
-        if ctx.guild is None:
+def is_intern():
+    async def pred(ctx: Context):
+        perms = await check_perms(ctx, {'manage_messages':True})
+        if perms:
             return True
         roles = [r.id for r in ctx.author.roles]
-        if await ctx.bot.is_owner(ctx.author):
+        if INTERN in roles:
             return True
-        elif (MANAGEMENT in roles) or (COUNCIL in roles) or (SENIORSTAFF in roles) or (STAFF in roles) or (INTERN in roles):
+        
+        return False
+    return commands.check(pred)
+
+def is_bot_channel():
+    async def pred(ctx: Context):
+        perms = await check_perms(ctx, {'manage_messages':True})
+        if perms:
             return True
-        elif ctx.channel.id == BOTCHANNEL:
-            return True
-        else:
+        if ctx.guild is None:
             return False
+        roles = [r.id for r in ctx.author.roles]
+        if INTERN in roles:
+            return True
+
+        settings: dict = await ctx.bot.utils.find_one({'type':'settings'})
+
+        if ctx.channel.id in settings.get('disabledChannels', []):
+            return False
+        return True
     return commands.check(pred)

@@ -1,7 +1,6 @@
 """
-Tags and stuff.
-
-Copyright (C) 2021  ItsArtemiz (Augadh Verma)
+The Tags Module - For custom tags.
+Copyright (C) 2021  Augadh Verma
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -14,362 +13,505 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-import discord
+from __future__ import annotations
 
-from discord.ext import commands, menus
-from bot import RoUtils
-from datetime import datetime
+import discord
+from jishaku.paginators import PaginatorEmbedInterface
+import utils
 
 from typing import Optional
-from utils.paginator import TagPages, jskpagination
-from utils.db import MongoClient
-from utils.checks import admin, botchannel
-from utils.utils import TagEntry, TagNotFound
-
+from discord.ext import commands
 from difflib import get_close_matches
-
-ADMINS = (449897807936225290, 173977882765426688, 311395138133950465, 604031762359910404, 621777717037105173)
+from bson.objectid import ObjectId
 
 class Tags(commands.Cog):
-    def __init__(self, bot:RoUtils):
+    def __init__(self, bot: utils.Bot) -> None:
         self.bot = bot
-        self._cache = dict()
-        self.db = bot.tag_db
 
-    def replied_reference(self, message):
-        ref = message.reference
-        if ref and isinstance(ref.resolved, discord.Message):
-            return ref.resolved.to_reference()
-        return None
+    async def cog_command_error(self, ctx: utils.Context, error: commands.CommandError):
+        error = getattr(error, 'original', error)
+        if isinstance(error, RuntimeError):
+            await ctx.send(error)
+        elif isinstance(error, (commands.BadArgument, commands.MissingRequiredArgument)):
+            if ctx.command.qualified_name == 'tag':
+                await ctx.send_help(ctx.command)
+            else:
+                await ctx.send(str(error))
+        else:
+            raise error
 
-    async def get_tag(self, name:str, update_uses=False) -> TagEntry:
-        tag = self._cache.get(name, None)
-        if tag is None:
-            document = await self.db.find_one({"$or":[{"name":{"$eq":name}}, {"aliases":{"$in":[name]}}]})
-            if document is None:
-                raise TagNotFound(f"Tag with name '{name}' couldn't be found in the database.")
-            tag = TagEntry(data=document)
+        
 
+    async def get_tag(self, name: str, *, update_uses=False) -> utils.TagEntry:
+        document = await self.bot.tags.find_one({"$or":[{"name":{"$eq":name}}, {"aliases":{"$in":[name]}}]})
+        if document is None:
+            search = []
+            async for t in self.bot.tags.find({}):
+                search.append(t['name'])
+                for a in t.get('aliases', []):
+                    search.append(a)
 
-        if isinstance(tag, TagEntry):
-            data = tag.raw
-            if update_uses:
-                data['uses'] = tag.uses + 1
-                await self.db.update_one({'_id':tag.id}, {'$set':{'uses':tag.uses}})
-            tag = TagEntry(data=data)
-            for alias in tag.aliases:
-                self._cache[alias] = tag
-            self._cache[tag.name] = tag
+            matches = get_close_matches(name, search)
+            if matches:
+                raise RuntimeError('Tag not found. Did you mean...\n'+"\n".join(m for m in matches))
+            else:
+                raise RuntimeError('Tag not found.')
+        
+        tag = utils.TagEntry(document)
+
+        if update_uses:
+            tag.uses += 1
+            await self.bot.tags.update_one(
+                {'_id':tag.id},
+                {'$set':{'uses':tag.uses}}
+            )
 
         return tag
 
-    async def create_tag(self, user:discord.User, name:str, content) -> bool:
-        created = datetime.utcnow()
+    def extra_info(self, tag: utils.TagEntry) -> str:
+        has_content = False
+        has_image = True if tag.image else False
+        has_button = True if tag.url else False
+
+        if tag.content and tag.content != '\uFEFF':
+            has_content = True
+
+        to_return = (f'Extra Information about the tag:\n'
+                     f'→ Content: {has_content}\n'
+                     f'→ Has an Embed: {tag.embed}\n'
+                     f'→ Has an Embed Image: {has_image}\n'
+                     f'→ Has an URL Button: {has_button}\n')
+
+        if has_button:
+            to_return += f'The Button "{tag.url[0]}" points to <{tag.url[1]}>'
+
+        return to_return
+
+
+    @utils.is_bot_channel()
+    @commands.group(invoke_without_command=True)
+    async def tag(self, ctx: utils.Context, *, name: str):
+        """Allows you to tag text for later retrieval.
+
+        If a subcommand is not called, then this will search the tag database
+        for the tag requested.
+        """
+
+        tag = await self.get_tag(name, update_uses=True)
+        items = tag.to_send()
+        view = items[1]
+        if isinstance(items[0], discord.Embed):
+            await ctx.send(embed=items[0], view=view, reference=ctx.replied_reference)
+        elif isinstance(items[0], str):
+            await ctx.send(items[0], view=view, reference=ctx.replied_reference)
+
+    @utils.is_bot_channel()
+    @tag.command()
+    async def info(self, ctx: utils.Context, name: str, *, flags: utils.TagOptions):
+        """Retrieves info about a tag.
+
+        The info includes things like the owner and how many times it was used.
+
+        Flags:
+        `extra:` true/t/y/yes - Shows extra info on the ticket.
+        """
+
+        tag = await self.get_tag(name, update_uses=True)
+
+        m = await ctx.reply(embed=tag.to_embed())
+        if flags.extra.casefold() in ('true', 't', 'yes', 'y'):
+            await m.reply(self.extra_info(tag))
+
+    @utils.is_bot_channel()
+    @tag.command()
+    async def delete(self, ctx: utils.Context, *, name: str):
+        """Removes a tag that you own.
+
+        The tag owner can always delete their own tags. If someone requests
+        deletion and has Administrator permissions then they can also
+        delete it.
+
+        Deleting a tag will delete all of its aliases as well.
+        """
+
+        tag = await self.get_tag(name)
+
+        if (tag.owner_id == ctx.author.id or
+            ctx.authr.guild_permissions.administrator == True):
+            
+            r = await self.bot.tags.delete_one({'_id':tag._id})
+            await ctx.reply(f'Successfully deleted tag "{tag.name}" and its components.')
+
+        else:
+            raise RuntimeError('You do not own this tag and hence cannot delete it.')
+
+    @utils.is_bot_channel()
+    @tag.command()
+    async def create(self, ctx: utils.Context, name: str, *, flags: utils.TagOptions):
+        """Creates a new tag owned by you.
+
+        You can integrate more options to your tag using the flags:
+
+        content: Content of tag. [Optional]
+        url: Name,URL (example -> Website , https://rowifi.link) [Optional] (Adds a button that points to the URL with the Name as the label)
+        embed: true/false [Optional] (Shows the tag output in an embed)
+        image: URL [Optional] (Setting this will make the tag into an embed) (Adds an image to the the embed)
+
+        Note that server moderators can delete your tag.
+        """
+
+        cmds: set[commands.Command] = ctx.command.parent.commands
+        for c in cmds:
+            if (name.casefold() == c.name.casefold() or
+                name.casefold() in [a.casefold() for a in c.aliases]):
+                return await ctx.send(f'{name} is a reserved key word and cannot be used to create a tag.')
+
+        try:
+            await self.get_tag(name)
+        except RuntimeError:
+            pass
+        else:
+            return await ctx.send(f'{name} is already an existing tag.')
+
         document = {
-            'owner':user.id,
-            'name':name,
-            'content':content,
-            'uses':0,
-            'created':created,
-            'aliases':[]
+            'name': name,
+            'content':flags.content or '\uFEFF',
+            'uses': 0,
+            'created':utils.utcnow(),
+            'aliases':[],
+            'owner':ctx.author.id
         }
 
-        tag = await self.db.insert_one(document=document)
-        document['_id'] = tag.inserted_id
-
-        self._cache[name] = TagEntry(data=document)
-
-        return tag.acknowledged
-
-    @botchannel()
-    @commands.group(invoke_without_command=True)
-    async def tag(self, ctx:commands.Context, *, name:str):
-        """ Shows a tag. """
-        tag = await self.get_tag(name=name, update_uses=True)
-        await ctx.send(tag.content, reference=self.replied_reference(ctx.message))
-
-    @botchannel()
-    @tag.command()
-    async def info(self, ctx:commands.Context, *,name:str):
-        """ Shows info on a tag."""
-        tag = await self.get_tag(name=name, update_uses=True)
-
-        embed = discord.Embed(
-            title = tag.name,
-            colour = self.bot.invisible_colour,
-            timestamp = tag.created,
-            description = f"*Tag ID: {tag.id}*"
-        )
-        embed.add_field(
-            name="Owner",
-            value=f"<@{tag.owner_id}>",
-        )
-        embed.add_field(
-            name="Uses",
-            value=tag.uses
-        )
-        embed.add_field(
-            name="Aliases",
-            value=len(tag.aliases)
-        )
-        embed.set_footer(text="Tag Created At")
-
-        await ctx.send(embed=embed)
-
-    @botchannel()
-    @tag.command()
-    async def aliases(self, ctx:commands.Context, *, name:str):
-        """ Shows aliases of a tag. """
-        tag = await self.get_tag(name=name)
-        embed = discord.Embed(
-            title = f"{len(tag.aliases)} Aliases found.",
-            colour = self.bot.invisible_colour,
-            timestamp = datetime.utcnow()
-        )
-        description = ""
-        for i, alias in enumerate(tag.aliases, start=1):
-            description += f"{i}. {alias}"
-
-        embed.description = description
-
-        await ctx.send(embed=embed)
-
-    @botchannel()
-    @tag.command(hidden=True, name='repr')
-    async def show_repr(self, ctx:commands.Context, *, name:str):
-        """ Shows a repr of the tag. If you don't know what this is, then this is not for you. """
-        tag = await self.get_tag(name=name)
-        await ctx.send(repr(tag))
-
-    @botchannel()
-    @tag.command(hidden=True, name='dict', aliases=['rawdict'])
-    async def tag_dict(self, ctx:commands.Context, *, name:str):
-        """ Shows the raw data of the tag. """
-        tag = await self.get_tag(name=name)
-
-        await jskpagination(ctx, str(tag.raw))
-
-    @botchannel()
-    @tag.command()
-    async def raw(self, ctx:commands.Context, *, name:str):
-        """ Shows raw information about a tag. Escapes markdown and mentions. """
-        tag = await self.get_tag(name=name, update_uses=True)
-
-        await ctx.send(discord.utils.escape_markdown(tag.content))
-
-    @botchannel()
-    @tag.command()
-    async def create(self, ctx:commands.Context, name:str, *, content:commands.clean_content):
-        """ Creates a tag. """
-        cmds = ctx.command.parent.commands
-        for c in cmds:
-            if (name == c.name) or (name in c.aliases):
-                return await ctx.send(f'{name} is reserved keyword and cannot be used to create a tag.')
-
-        try:
-            tag = await self.get_tag(name=name)
-            if tag:
-                return await ctx.send(f'{tag} is already a registered tag.')
-        except TagNotFound:
-            tag = await self.create_tag(ctx.author, name, content)
-            if tag:
-                await ctx.send(f'Successfully created the tag: {name}')
+        if flags.embed:
+            if flags.embed.casefold() == 'true':
+                document['embed'] = True
+            elif flags.embed.casefold() == 'false':
+                document['embed'] = False
             else:
-                await ctx.send('Unable to create a tag at the moment.')
+                raise RuntimeError('Invalid options provided. Valid options are: `true` and `false`')
 
-    @admin()
-    @tag.command()
-    async def cache(self, ctx:commands.Context):
-        """ Shows the internal Cache. """
-        await jskpagination(ctx, str(self._cache))
-
-
-    @botchannel()
-    @tag.command()
-    async def delete(self, ctx:commands.Context, *,name:str):
-        """ Deletes a tag. """
-        tag = await self.get_tag(name=name)
-        if (tag.owner_id == ctx.author.id) or (await self.bot.is_owner(ctx.author)):
-            await self.db.delete_one({'name':name})
-            del self._cache[name]
-            return await ctx.send('Succesfully deleted the tag!')
-
-        elif tag.owner_id in ADMINS:
-            return await ctx.send('Cannot delete a tag made by another admin.')
-
-        elif ctx.author.guild_permissions.administrator:
-            await self.db.delete_one({'name':name})
-            del self._cache[name]
-            return await ctx.send('Succesfully deleted the tag!')
-
-        else:
-            return await ctx.reply('You do not own this tag.')
-
-    @botchannel()
-    @tag.command()
-    async def edit(self, ctx:commands.Context, name:str, *, content:commands.clean_content):
-        """ Edits a tag. """
-        tag = await self.get_tag(name=name)
-
-        if tag.owner_id == ctx.author.id:
-            await self.db.update_one({'name':name},{"$set":{'content':content}})
-            await ctx.reply('Successfully edited the tag.')
-        else:
-            await ctx.send('You cannot edit someone elses tag.')
-
-        data = tag.raw
-        data['content'] = content
-
-        tag = TagEntry(data=data)
-
-        for alias in tag.aliases:
-            self._cache[alias] = tag
-            self._cache[tag.name] = tag
-
-    @botchannel()
-    @tag.command(usage="<new name> <old name>")
-    async def alias(self, ctx:commands.Context, newname:str, *, oldname:str):
-        """ Adds an alias to a tag. """
-
-        old = await self.get_tag(name=oldname, update_uses=False)
-        try:
-            new = await self.get_tag(name=newname, update_uses=False)
-        except TagNotFound:
-            new = None
-
-        if (old is not None) and (new is None):
-            data = old.raw
-            aliases = old.aliases
-            if newname in aliases:
-                return await ctx.send('Alias is already there.')
-            aliases.append(newname)
-            if old.owner_id == ctx.author.id:
-                await self.db.update_one({'name':oldname}, {'$set':{'aliases':aliases}})
-                data['aliases'] = aliases
-                tag = TagEntry(data=data)
-                for alias in tag.aliases:
-                    self._cache[alias] = tag
-                    self._cache[tag.name] = tag
-                return await ctx.send(f"Tag alias '{newname}' that points to '{oldname}' successfully created.")
+        if flags.image:
+            if flags.image.startswith('http'):
+                document['image'] = flags.image
+                document['embed'] = True
             else:
-                return await ctx.send("You do not own the tag.")
-        else:
-            return await ctx.send(f"Cannot find the tag: **{oldname}**")
+                raise RuntimeError('Invalid URL was provided, please provide an URL that starts with http(s).')
 
-    @botchannel()
-    @tag.command()
-    async def search(self, ctx:commands.Context, *, name:str):
-        """ Searches for a tag. """
-        async for doc in self.db.find():
-            doc:dict
-            tag = TagEntry(data=doc)
-            self._cache[tag.name] = tag
-            for alias in tag.aliases:
-                self._cache[alias] = TagEntry(data=doc)
-
-        matches = get_close_matches(name, list(self._cache.keys()), n=10, cutoff=0.5)
-        if len(matches) > 0:
-            tags = [(await self.get_tag(n)) for n in matches]
+        if flags.url:
             try:
-                p = TagPages(entries=tags, per_page=20, colour=self.bot.invisible_colour)
-            except menus.MenuError as e:
-                await ctx.send(e)
+                name, url = flags.url.replace(' ,', ',').replace(', ', ',').split(',', 1)
+            except ValueError:
+                raise RuntimeError('Got multiple commas (`,`), expected only one.')
             else:
-                await p.start(ctx)
-        else:
-            await ctx.send("No tags found.")
+                document['url'] = [name, url]
 
-
-    @botchannel()
+        r = await self.bot.tags.insert_one(document)
+        
+        await ctx.reply(f'Successfully created the tag\nYou can reference it using the id: `{r.inserted_id}`')
+            
+    @utils.is_bot_channel()
     @tag.command()
-    async def claim(self, ctx:commands.Context, *, name:str):
-        """ Claims a tag. """
-        tag = await self.get_tag(name, update_uses=False)
-        if tag.owner_id in [m.id for m in ctx.guild.members]:
-            return await ctx.send("The tag owner is still in the guild.")
-        else:
-            await self.db.update_one({'name':name}, {'$set':{'owner':ctx.author.id}})
-            data = {
-                '_id':tag.id,
-                'owner':ctx.author.id,
-                'name':name,
-                'content':tag.content,
-                'uses':tag.uses,
-                'created':tag.created,
-                'aliases':tag.aliases
-            }
-            self._cache[name] = TagEntry(data=data)
-            return await ctx.send("Succesfully claimed the tag.")
+    async def edit(self, ctx: commands.Context, name: str, *, flags: utils.TagOptions):
+        """Modifies an existing tag that you own.
 
-    @botchannel()
-    @tag.command()
-    async def transfer(self, ctx:commands.Context, name:str, user:discord.Member):
-        """ Transfers a tag. """
-        tag = await self.get_tag(name, update_uses=False)
-        if tag.owner_id == ctx.author.id:
-            await self.db.update_one({'name':name}, {'$set':{'owner':user.id}})
-            data = {
-            '_id':tag.id,
-            'owner':user.id,
-            'name':name,
-            'content':tag.content,
-            'uses':tag.uses,
-            'created':tag.created,
-            'aliases':tag.aliases
-            }
-            self._cache[name] = TagEntry(data=data)
-            return await ctx.send(content=f"Successfully transferred the tag to {user.name}")
-        else:
-            return await ctx.send("You do not own this tag.")
+        Takes same flags as tag create
 
-    @botchannel()
-    @tag.command(name="list")
-    async def _list(self, ctx:commands.Context, user:Optional[discord.User]):
-        "Lists a tag by a user."
-        user = user or ctx.author
-        tags = self.db.find({'owner':user.id})
-        _all = []
-        async for tag in tags:
-            _all.append(TagEntry(data=tag))
+        `content: Content of the tag.` [Optional]
+        `url: Name,URL` (example -> Website , https://rowifi.link) [Optional]
+        (Adds a button that points to the URL with the Name as the label)
+        `embed: true/false` [Optional] (Shows the tag output in an embed)
+        `image: URL` [Optional] (Setting this will make the tag into an embed)
+        (Adds an image to the the embed)
 
-        if _all:
+        Couple of things to note, having an image by default will
+        enable the embed. You can pass in `none` to the flag fields
+        to get rid of them (like, image: none will remove the embed 
+        image)
+
+        To edit the aliases of the tags, use the tag alias command.
+
+        This command completely replaces the original text. If
+        you want to get the old text back, consider using the
+        tag raw command.
+        """
+        tag = await self.get_tag(name)
+
+
+        if tag.owner_id != ctx.author.id:
+            raise RuntimeError('You do not own this tag and hence cannot modify it.')
+
+        if flags.content:
+            if flags.content.casefold() == 'none':
+                tag.content = '\uFEFF'
+            else:
+                tag.content = flags.content
+
+        if flags.url:
             try:
-                p = TagPages(entries=_all, per_page=20, colour=self.bot.invisible_colour)
-            except menus.MenuError as e:
-                await ctx.send(e)
-            else:
-                await p.start(ctx)
-        else:
-            await ctx.send("No tags found.")
-
-    @botchannel()
-    @tag.command(name='all')
-    async def _all(self, ctx:commands.Context, user:Optional[discord.User]):
-        """ Shows all tags by a user or in the guild. """
-        if user:
-            await ctx.invoke(self._list, user=user)
-        else:
-            tags = [TagEntry(data=tag) async for tag in self.db.find({})]
-            if tags:
-                try:
-                    p = TagPages(entries=tags, per_page=20, colour=self.bot.invisible_colour)
-                except menus.MenuError as e:
-                    await ctx.send(e)
+                name, url = flags.url.replace(' ,', ',').replace(', ', ',').split(',', 1)
+            except ValueError:
+                if flags.url.casefold() == 'none':
+                    tag.url = None
                 else:
-                    await p.start(ctx)
+                    raise RuntimeError('Got multiple commas (`,`), expected only one.')
             else:
-                await ctx.send("No tags found.")
+                tag.url = [name, url]
 
-    @botchannel()
-    @commands.command()
-    async def tags(self, ctx:commands.Context, *, user:Optional[discord.User]):
-        """Lists tags by a user"""
+        if flags.embed:
+            if flags.embed.casefold() == 'true' or tag.image:
+                tag.embed = True
+            else:
+                tag.embed = False
+
+        if flags.image:
+            if flags.image.casefold() == 'none':
+                tag.image = None
+            else:
+                tag.image = flags.image
+                tag.embed = True
+
+        
+        r = await self.bot.tags.collection.replace_one({'_id':tag._id}, tag.to_dict())
+        await ctx.reply('Successfully updated the tag!')
+
+    @utils.is_bot_channel()
+    @tag.command()
+    async def raw(self, ctx: utils.Context, name: str, *, flags: utils.TagOptions):
+        """Gets the raw content of the tag.
+
+        This is with markdown escaped. Useful for editing.
+        
+        Flags:
+        `extra:` true/t/yes/y - Shows extra info on the tag.
+        """
+
+        tag = await self.get_tag(name, update_uses=True)
+        
+        if tag.content and tag.content != '\uFEFF':
+            content = discord.utils.escape_markdown(tag.content)
+        else:
+            content = tag.content
+        
+        m = await ctx.reply(content)
+
+        if flags.extra.casefold() in ('true', 't', 'yes', 'y'):
+            await m.reply(self.extra_info(tag))
+        
+
+    @utils.is_bot_channel()
+    @tag.command()
+    async def search(self, ctx: utils.Context, *, query: str):
+        """Searches for a tag.
+
+        The query must be at least 2 characters.
+        """
+
+        if len(query) < 2:
+            return await ctx.send('The query must be at least 2 characters.')
+
+        search = []
+
+        async for t in self.bot.tags.find({}):
+            search.append(t['name'])
+            for a in t.get('aliases', []):
+                search.append(a)
+
+        matches = get_close_matches(query, search, n=int(len(search)//1.5), cutoff=0.45)
+
+        if matches:
+            embed = discord.Embed(title='Close matches found', colour=ctx.colour)
+            paginator = commands.Paginator(prefix='', suffix='', max_size=350)
+            for i,t in enumerate(matches, 1):
+                paginator.add_line(f'{i}. {t}')
+
+            interface = PaginatorEmbedInterface(self.bot, paginator, owner=ctx.author, embed=embed)
+
+            await interface.send_to(ctx)
+        else:
+            await ctx.reply('Could not find the tag.')
+
+    @utils.is_bot_channel()
+    @tag.command(name='list')
+    async def _list(self, ctx: utils.Context, *, user: Optional[discord.User]):
+        """Lists all the tags that belong to you or someone else."""
+
         user = user or ctx.author
+
+        search: list[str] = []
+        async for t in self.bot.tags.find({'owner':user.id}):
+            search.append(f"{t['name']} *(uses: {t['uses']})*")
+                
+
+        if search:
+            embed = discord.Embed(title=f'All tags owned by {user}', colour=ctx.colour)
+            paginator = commands.Paginator(prefix='', suffix='', max_size=350)
+            for i,t in enumerate(search, 1):
+                paginator.add_line(f'{i}. {t}')
+
+            interface = PaginatorEmbedInterface(self.bot, paginator, owner=ctx.author, embed=embed)
+
+            await interface.send_to(ctx)
+        else:
+            await ctx.reply(f'**{user}** does not own any tags.')
+
+    @utils.is_bot_channel()
+    @tag.command(name='all')
+    async def _all(self, ctx: utils.Context):
+        """Shows all server tags."""
+        search = []
+
+        async for t in self.bot.tags.find({}):
+            uses = t['uses']
+            search.append(f"{t['name']} *(uses: {uses})*")
+
+        if search:
+            embed = discord.Embed(title='All Server Specific Tags', colour=ctx.colour)
+            paginator = commands.Paginator(prefix='', suffix='', max_size=350)
+            for i,t in enumerate(search, 1):
+                paginator.add_line(f'{i}. {t}')
+
+            interface = PaginatorEmbedInterface(self.bot, paginator, owner=ctx.author, embed=embed)
+
+            await interface.send_to(ctx)
+        else:
+            await ctx.reply(f'No tags were found for the server.')
+
+    @utils.is_bot_channel()
+    @tag.command()
+    async def transfer(self, ctx: utils.Context, name: str, *, member: discord.Member):
+        """Transfers a tag to another member.
+
+        You must own the tag before doing this.
+        """
+
+        tag = await self.get_tag(name)
+
+        if tag.owner_id == ctx.author.id:
+            await self.bot.tags.update_one({'_id':tag._id}, {'$set':{'owner': member.id}})
+            await ctx.reply(f'Successfully transferred {tag.name} to {member}')         
+        else:
+            return await ctx.reply('You do not own this tag and hence cannot transfer it.')
+
+    @utils.is_bot_channel()
+    @tag.command()
+    async def claim(self, ctx: utils.Context, *, name: str):
+        """Claims an unclaimed tag.
+
+        An unclaimed tag is a tag that effectively
+        has no owner because they have left the server.
+        """
+
+        tag = await self.get_tag(name)
+
+        try:
+            member = await commands.MemberConverter().convert(ctx, str(tag.owner_id))
+        except commands.BadArgument:
+            await self.bot.tags.update_one({'_id':tag._id}, {'$set':{'owner': ctx.author.id}})
+            await ctx.reply(f'Successfully claimed the tag "{name}".')
+        else:
+            await ctx.reply('The tag owner is still in this server.')
+
+    @utils.is_bot_channel()
+    @tag.command(aliases=['aliases'])
+    async def alias(self, ctx: utils.Context, name: str, *, flags: utils.TagAlias):
+        """Add or remove aliases from a tag.
+        
+        Usage: (Separate the aliases by commas `,`)
+        Adding an alias - add: hello, hi
+        Removing an alias - remove: hello, hi
+        """
+
+        tag = await self.get_tag(name)
+
+        if tag.owner_id != ctx.author.id:
+            return await ctx.send('You do not own this tag.')
+
+        if not flags._add and not flags.remove:
+            embed = discord.Embed(colour=ctx.colour, title=f'Aliases for tag: {tag.name}')
+            embed.description = '\n'.join(f'{i}. {a}' for i,a in enumerate(tag.aliases, 1)) or discord.Embed.Empty
+            return await ctx.reply(embed=embed)
+        
+        cmds: set[commands.Command] = ctx.command.parent.commands
+
+        if flags._add:
+            to_add = flags._add.replace(' ,', ',').replace(', ', ',').split(',')
+        else:
+            to_add = []
+        if flags.remove:
+            to_remove = flags.remove.replace(' ,', ',').replace(', ', ',').split(',')
+        else:
+            to_remove = []
+
+        for a in to_add:
+            try:
+                await self.get_tag(a)
+            except RuntimeError:
+                pass
+            else:
+                return await ctx.send(f'{a} is an existing tag. Please try again.')
+            for c in cmds:
+                if (a.casefold() == c.name.casefold() or
+                    a.casefold() in [b.casefold() for b in c.aliases]):
+                    return await ctx.send(f'{a} is a reserved key word and cannot be used to create an alias.')
+                else:
+                    tag.aliases.append(a)
+
+        for a in to_remove:
+            try:
+                tag.aliases.remove(a)
+            except IndexError:
+                pass
+
+        aliases = list(set(tag.aliases))
+
+        await self.bot.tags.update_one({'_id':tag._id}, {'$set':{'aliases':aliases}})
+        
+        await ctx.tick(True)
+
+    @utils.is_admin()
+    @tag.command()
+    async def prune(self, ctx: utils.Context, uses: int = 0):
+        """Prunes tags which have not been used atleast once or have been
+        used less than or equal to the uses provided.
+        
+        Once deleted, there is no recovering of the tags.
+        """
+
+
+        r = await self.bot.tags.delete_many({'uses':{'$lte':uses}})
+        await ctx.reply(f'Successfully deleted {r.deleted_count} tags.')
+
+    @utils.is_bot_channel()
+    @tag.command(name='id', usage='<id>')
+    async def _id(self, ctx: utils.Context, *, name: str):
+        """Get a tag by using its id."""
+
+        tag = await self.bot.tags.find_one({'_id':ObjectId(name)})
+        if tag is None:
+            return await ctx.reply('Invalid id provided, I could not find the tag using that id.')
+
+        tag = utils.TagEntry(tag)
+        items = tag.to_send()
+        view = items[1]
+        if isinstance(items[0], discord.Embed):
+            await ctx.send(embed=items[0], view=view, reference=ctx.replied_reference)
+        elif isinstance(items[0], str):
+            await ctx.send(items[0], view=view, reference=ctx.replied_reference)
+        await ctx.invoke(self.info, name=tag.name)
+
+        await self.bot.tags.update_one({'_id':tag._id}, {'$set':{'uses':tag.uses+1}})
+
+    @utils.is_bot_channel()
+    @commands.command()
+    async def tags(self, ctx: utils.Context, *, user: Optional[discord.User]):
+        """An alias for tag list command."""
+
+        user = user or ctx.author
+
         await ctx.invoke(self._list, user=user)
 
-
-def setup(bot):
+def setup(bot: utils.Bot):
     bot.add_cog(Tags(bot))
