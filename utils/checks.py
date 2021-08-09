@@ -47,6 +47,8 @@ def is_bot_channel():
         perms = await check_perms(ctx, {'manage_messages':True})
         if perms:
             return True
+        if ctx.guild is None:
+            return False
         roles = [r.id for r in ctx.author.roles]
         if INTERN in roles:
             return True
