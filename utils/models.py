@@ -20,17 +20,16 @@ from __future__ import annotations
 
 import datetime
 import enum
-import time
 import aiohttp
 import discord
 import humanize
 
-from typing import Any, List, Optional, Type, Union, TypeVar
+from typing import Any, Optional, Union, TypeVar
 from discord.ext import commands
 from bson import ObjectId
 
 from .bot import Bot
-from .roblox import User, time_roblox
+from .roblox import User
 
 Timestamp = TypeVar('Timestamp', float, int)
 
@@ -428,3 +427,32 @@ class InfractionEntry:
             f'**Case #{self.id} | {self.type.name.capitalize()} | {self.time.strftime("%Y-%m-%d")}**\n'
             f'{self.__str__()}'
         )
+
+class Embed(discord.Embed):
+    def __init__(
+        self,
+        *,
+        author: discord.User = None,
+        footer: str = None,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+
+        if author:
+            self.set_author(name=str(author), icon_url=author.avatar.url)
+        if footer:
+            self.set_footer(text=footer)
+
+    async def post_log(self, bot: Bot, guild: discord.Guild = None, **kwargs) -> Optional[discord.Message]:
+        settings = await bot.utils.find_one({'type':'settings'})
+        channel_id = settings['log']
+
+        if guild:
+            channel = guild.get_channel(channel_id)
+        else:
+            channel = bot.get_channel(channel_id)
+
+        if channel is None:
+            return
+
+        return await channel.send(embed=self, **kwargs)
