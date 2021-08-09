@@ -9,4 +9,4 @@ from .models import (
     request, human_time, format_dt, format_date,
     post_log, TicketFlag, TagEntry, TagOptions,
     TagAlias, InfractionEntry, InfractionColour,
-    InfractionColor, InfractionType)
+    InfractionColor, InfractionType, Embed)
