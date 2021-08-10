@@ -46,7 +46,8 @@ initial_extensions = {
     'cogs.api',
     'cogs.logs',
     'cogs.handler',
-    'cogs.help'
+    'cogs.help',
+    'cogs.apps'
 }
 
 class VersionInfo(NamedTuple):
@@ -90,8 +91,8 @@ class Bot(commands.Bot):
         self.colour = discord.Colour.blue()
         self.footer = 'RoUtils'
 
-        self.version_info = VersionInfo(major=2, minor=0, micro=0, releaselevel='final', serial=0)
-        self.__version__ = '2.0.0'
+        self.version_info = VersionInfo(major=2, minor=0, micro=1, releaselevel='final', serial=0)
+        self.__version__ = '2.0.1'
 
         for cog in initial_extensions:
             try:
