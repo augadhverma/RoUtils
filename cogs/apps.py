@@ -26,6 +26,9 @@ from utils import Bot, Context
 APPLICATIONS = 862654466527199242
 WEBHOOKID = 862654541933576223
 
+COUNCIL = 626860276045840385
+MANAGEMENT = 671634821323423754
+
 class Apps(commands.Cog):
     def __init__(self, bot: Bot):
         self.bot = bot
@@ -37,14 +40,16 @@ class Apps(commands.Cog):
 
         if message.embeds and message.author.id == WEBHOOKID:
             embed = message.embeds[0]
-            thread = await message.channel.start_thread(
+            thread = await message.channel.create_thread(
                 name=embed.title,
                 message=message,
                 reason=f'New Application {embed.title.split()[-1]} just arrived',
                 type=discord.ChannelType.private_thread
             )
 
-            await thread.send('Application URL: <https://forms.gle/zUQDGwaK5LY4w5D29>')
+            for m in message.guild.members:
+                if m.top_role.id in (COUNCIL, MANAGEMENT):
+                    await thread.add_user(m)
 
     @commands.Cog.listener()
     async def on_thread_delete(self, thread: discord.Thread):
