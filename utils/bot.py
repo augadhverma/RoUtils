@@ -67,7 +67,7 @@ async def get_pre(bot, message: discord.Message):
         prefixes = settings.get('prefixes', [])
         base.extend(prefixes)
 
-    if bot.version_info.releaselevel != 'final' or message.author.id == bot.owner_id:
+    if bot.version_info.releaselevel != 'final':
         base.extend(['b.', 'b!'])
 
     return commands.when_mentioned_or(*base)(bot, message)
@@ -91,8 +91,8 @@ class Bot(commands.Bot):
         self.colour = discord.Colour.blue()
         self.footer = 'RoUtils'
 
-        self.version_info = VersionInfo(major=2, minor=0, micro=1, releaselevel='final', serial=0)
-        self.__version__ = '2.0.1'
+        self.version_info = VersionInfo(major=2, minor=0, micro=2, releaselevel='final', serial=0)
+        self.__version__ = '2.0.2'
 
         for cog in initial_extensions:
             try:
