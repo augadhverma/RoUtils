@@ -34,6 +34,7 @@ cache = utils.Cache(None)
 
 TICKETLOGS = 671795168655048704
 ROWIFIGUILD = 576325772629901312
+TICKETCATEGORY = 680039943199784960
 
 def guild_info(user: Union[discord.Member, discord.User]):
     if isinstance(user, discord.User):
@@ -139,8 +140,25 @@ class Info(commands.Cog, name='Information'):
 
     @utils.is_intern()
     @commands.command()
-    async def notify(self, ctx: utils.Context, user: discord.Member, *, notification: str):
+    async def notify(self, ctx: utils.Context, user: Optional[discord.Member], channel: Optional[discord.TextChannel], *, notification: Optional[str]):
         """Notifies the user about the notification."""
+        if user and not notification:
+            return await ctx.send('Please also include the notification with the command.')
+        elif channel:
+            if channel.category and channel.category_id == TICKETCATEGORY:
+                async for m in channel.history(oldest_first=True):
+                    try:
+                        user = await commands.MemberConverter().convert(ctx, m.content.split()[0])
+                        if notification:
+                            notification = notification
+                        else:
+                            notification = f'Your ticket {channel.mention} has been open for a while. Please respond in the ticket so the Staff Team can take further actions.'
+                        break
+                    except commands.BadArgument:
+                        return await ctx.reply('Cannot find a user in that channel.')
+            else:
+                await ctx.reply('I can only send notifs based on channel if the channel is a ticket channel.')
+
         embed = discord.Embed(
             colour = ctx.author.colour,
             description = notification,
