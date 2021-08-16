@@ -34,7 +34,7 @@ from utils import InfractionEntry, InfractionType, Context
 from humanize import naturaltime
 
 HQINVITE = 'https://discord.gg/vkfasCRNuD'
-
+TICKETCATEGORY = 680039943199784960
 
 # Converters from https://github.com/Rapptz/RoboDanny/blob/rewrite/cogs/mod.py
 
@@ -831,6 +831,10 @@ class Moderation(commands.Cog):
             return
 
         if INTERN in [r.id for r in message.author.roles]:
+            return
+
+        # Ignore autowarn in tickets
+        if message.channel.category and message.channel.category_id == TICKETCATEGORY:
             return
 
         settings = await self.bot.utils.find_one({'type':'settings'})
