@@ -140,24 +140,40 @@ class Info(commands.Cog, name='Information'):
 
     @utils.is_intern()
     @commands.command()
-    async def notify(self, ctx: utils.Context, user: Optional[discord.Member], channel: Optional[discord.TextChannel], *, notification: Optional[str]):
-        """Notifies the user about the notification."""
-        if user and not notification:
-            return await ctx.send('Please also include the notification with the command.')
+    async def notify(
+        self,
+        ctx: utils.Context,
+        member: Optional[discord.Member],
+        channel: Optional[discord.TextChannel],
+        *,
+        notification: Optional[str]
+    ):
+        """Notifies the user about something."""
+
+        if member and not notification:
+            return await ctx.send("Please include the notification aswell.")
+
         elif channel:
             if channel.category and channel.category_id == TICKETCATEGORY:
-                async for m in channel.history(oldest_first=True):
-                    try:
-                        user = await commands.MemberConverter().convert(ctx, m.content.split()[0])
-                        if notification:
-                            notification = notification
-                        else:
-                            notification = f'Your ticket {channel.mention} has been open for a while. Please respond in the ticket so the Staff Team can take further actions.'
-                        break
-                    except commands.BadArgument:
-                        return await ctx.reply('Cannot find a user in that channel.')
+                async for message in channel.history(oldest_first=True):
+                    if message.embeds:
+                        for word in message.embeds[0].description.split():
+                            try:
+                                member = await commands.MemberConverter().convert(ctx, word)
+                                if notification is None:
+                                    notification = f"Your ticket {channel.mention} has been inactive for a while. Please respond in the ticket so our team can take further actions."
+                            except commands.BadArgument:
+                                pass
+                            else:
+                                break
+                    else:
+                        return await ctx.send("Could not find the user.")
+                    break
             else:
-                await ctx.reply('I can only send notifs based on channel if the channel is a ticket channel.')
+                return await ctx.send("Channel based notifications are only for ticket channels.")
+
+        if member is None:
+            return await ctx.send("Could not find the user.")
 
         embed = discord.Embed(
             colour = ctx.author.colour,
@@ -168,12 +184,12 @@ class Info(commands.Cog, name='Information'):
         embed.set_author(name='Notification from RoWifi Staff', icon_url='https://cdn.discordapp.com/emojis/733311296732266577.png?v=1')
 
         try:
-            await user.send(embed=embed)
+            await member.send(embed=embed)
             await ctx.tick()
         except discord.Forbidden:
-            await ctx.reply("Couldn't notify the user because they either have blocked me or have their DMs closed.")
+            await ctx.send("Could not notify the user at this time. They either have DMs closed or have blocked me.")
 
-        embed.add_field(name='Notification Sent to', value=f'{user.mention} - `{user.id}`')
+        embed.add_field(name='Notification Sent to', value=f'{member.mention} - `{member.id}`')
         embed.set_footer(
             text=f'Sent from: {ctx.author} - {ctx.author.id}',
             icon_url=ctx.author.avatar.url
@@ -287,179 +303,6 @@ class Info(commands.Cog, name='Information'):
         )
 
         await msg.edit(content=None, embed=embed)
-
-    @utils.is_intern()
-    @commands.group(invoke_without_command=True)
-    async def ticket(self, ctx: utils.Context, *, member: discord.Member=None):
-        """Shows tentative tickets handled by a user."""
-        await ctx.loading()
-        member = member or ctx.author
-        now = utils.utcnow()
-        reference = None
-        if now.month == 1:
-            after = datetime.datetime(now.year, 12, now.day, now.hour, now.minute, now.second, now.microsecond, now.tzinfo)
-        else:
-            after = datetime.datetime(now.year, now.month-1, now.day, now.hour, now.minute, now.second, now.microsecond, now.tzinfo)
-
-        channel: discord.TextChannel = ctx.guild.get_channel(TICKETLOGS)
-        if channel is None:
-            return await ctx.send('Cannot get logs right now. Try again later?')
-
-        types = []
-        async for msg in channel.history(limit=None, after=after):
-            if msg.embeds:
-                e = msg.embeds[0]
-
-                lines = e.fields[-1].value.split('\n')
-                for line in lines:
-                    try:
-                        user = await commands.UserConverter().convert(ctx, line.strip().split()[2])
-                        if reference is None:
-                            reference = msg
-                    except:
-                        pass
-                    else:
-                        if user.id == member.id:
-                            types.append(e.fields[2].value)
-                            break
-
-        counter = Counter(types)
-        total = sum([v for v in counter.values()])
-        embed = discord.Embed(
-            title=f'Tickets Handled by {member} ({total})',
-            description='\n'.join(f'**{k}**: {v}' for k,v in counter.items()),
-            colour=ctx.colour,
-            timestamp=utils.utcnow()
-        )
-
-        embed.set_footer(text='These are just "tentative" and not final for judging.')
-
-        embed.add_field(
-            name='Duration',
-            value=f'**From:** {utils.format_date(after)}\n**Until:** {utils.format_date(now)}',
-            inline=False
-        )
-
-        await ctx.reply(embed=embed)
-        await ctx.send(f'Reference Message: {reference.jump_url}', embeds=msg.embeds)
-        await ctx.loading(True)
-            
-    @utils.is_admin()
-    @ticket.command()
-    async def info(self, ctx: utils.Context, *, flags: utils.TicketFlag):
-        """Gives a detailed info on a user and their ticket handling.
-        
-        Accepts either a user or role and a after argument which accepts date in the 
-        format `yyyy-mm-dd`."""
-        user = flags.user
-        role = flags.role
-        if user and role:
-            return await ctx.send('Please give either user or role, not both.')
-        elif not user and not role:
-            return await ctx.send('Please give either a role or a user.')
-
-        after = flags.after
-        now = utils.utcnow()
-        if after:
-            try:
-                after = datetime.datetime.strptime(after, '%Y-%m-%d')
-            except:
-                return await ctx.send('Invalid date format given, please give a format of: `yyyy-mm-dd`')
-
-        else:
-            if now.month == 1:
-                after = datetime.datetime(now.year, 12, now.day, now.hour, now.minute, now.second, now.microsecond, now.tzinfo)
-            else:
-                after = datetime.datetime(now.year, now.month-1, now.day, now.hour, now.minute, now.second, now.microsecond, now.tzinfo)
-
-        channel: discord.TextChannel = ctx.guild.get_channel(TICKETLOGS)
-        if channel is None:
-            return await ctx.send('Cannot get logs right now. Try again later?')
-
-        if user:
-            converter = commands.UserConverter()
-        elif role:
-            converter = commands.MemberConverter()
-        entries = []
-        await ctx.loading()
-        async for msg in channel.history(limit=None, after=after):
-            if msg.embeds:
-                try:
-                    e = msg.embeds[0]
-                    panel = e.fields[2].value
-                    number = e.fields[1].value.split('-')[-1]
-                    url = e.fields[-2].value.replace(')', '(').split('(')[1]
-                    display = f'[{panel} {number}]({url})'
-                except IndexError:
-                    pass
-                
-                lines = e.fields[-1].value.split('\n')
-                for line in lines:
-                    try:
-                        person = await converter.convert(ctx, line.strip().split()[2])
-                    except:
-                        pass
-                    else:
-                        if user:
-                            if user.id == person.id:
-                                entries.append(display)
-                        elif role and isinstance(person, discord.Member):
-                            if role in person.roles:
-                                entries.append(f'{display} - {person}')
-
-        entries.sort(key=lambda s: s.split()[0])
-
-        if role:
-            entries.sort(key=lambda s: s.split('-')[-1])
-
-        embed = discord.Embed(
-            colour = discord.Colour.blue(),
-            title = f'Showing tickets for `{user if user else f"@{role}"}`'
-        )
-
-        embed.add_field(
-            name='Duration',
-            value=f'**From:** {utils.format_date(after)}\n**Until:** {utils.format_date(now)}',
-            inline=False
-        )
-
-        if len(entries) == 0:
-            return await ctx.send(f'No tickets handled by `{user if user else f"@{role}"}`')
-
-        paginator = commands.Paginator(prefix='', suffix='', max_size=2000)
-        for i,t in enumerate(entries, 1):
-            paginator.add_line(f'{i}. {t}')
-
-        interface = PaginatorEmbedInterface(self.bot, paginator, owner=ctx.author, embed=embed)
-
-        await interface.send_to(ctx)
-        await ctx.loading(True)
-
-    @info.error
-    async def info_err(self, ctx: utils.Context, error: commands.CommandError):
-        error = getattr(error, 'original', error)
-        embed = discord.Embed(
-            colour = discord.Colour.red(),
-            title = 'An error occurred',
-            timestamp = utils.utcnow()
-        )
-        embed.set_author(name=str(ctx.author), icon_url=ctx.author.avatar.url)
-        embed.set_footer(text=str(ctx.message.content))
-
-        if isinstance(error, commands.BadUnionArgument):
-            embed.description = '\n'.join(str(e) for e in error.errors)
-        elif isinstance(error, commands.RoleNotFound):
-            embed.description = str(error)
-        else:
-            embed.description = str(error)
-            embed.add_field(name='Args', value=error.args or 'No Args', inline=False)
-            try:
-                embed.add_field(name='Message', value=error.message, inline=False)
-            except AttributeError:
-                pass            
-            await ctx.send(embed=embed)
-            raise error
-        await ctx.send(embed=embed)
 
     def format_commit(self, commit):
         gt = datetime.datetime.strptime(f"{commit['commit']['committer']['date']}", '%Y-%m-%dT%H:%M:%SZ')
