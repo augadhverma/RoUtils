@@ -47,7 +47,8 @@ initial_extensions = {
     'cogs.logs',
     'cogs.handler',
     'cogs.help',
-    'cogs.apps'
+    'cogs.apps',
+    'cogs.tickets'
 }
 
 class VersionInfo(NamedTuple):
