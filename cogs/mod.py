@@ -41,8 +41,8 @@ TICKETCATEGORY = 680039943199784960
 def can_execute_action(ctx: utils.Context, user, target):
     return user.id == ctx.bot.owner_id or \
            user == ctx.guild.owner or \
-           user.top_role > target.top_role and \
-           user != target        
+           user != target and \
+           user.top_role > target.top_role if isinstance(target, discord.Member) else True
 
 class MemberID(commands.Converter):
     async def convert(self, ctx: utils.Context, argument: str) -> discord.Member:
@@ -113,6 +113,8 @@ class WarnsSelection(discord.ui.View):
     @discord.ui.select(options=options)
     async def callback(self, select: discord.ui.Select, interaction: discord.Interaction):
         self.value = select.values[0]
+        select.disabled = True
+        await interaction.message.edit(view=self)
         self.stop()
 
 time_regex = re.compile("(?:(\d{1,5})(h|s|m|d))+?")
@@ -606,7 +608,7 @@ class Moderation(commands.Cog):
 
     @utils.is_staff()
     @commands.group()
-    async def purge(self, ctx: Context, member: Optional[discord.Member], search: Optional[int]):
+    async def purge(self, ctx: Context, member: Optional[discord.User], search: Optional[int]):
         """Removes messages that meet a criteria.
         
         When the command is done doing its work, you will get a message
@@ -650,7 +652,7 @@ class Moderation(commands.Cog):
 
     @utils.is_staff()
     @purge.command(aliases=['member'])
-    async def user(self, ctx:commands.Context, member:discord.Member, search=100):
+    async def user(self, ctx:commands.Context, member:discord.User, search=100):
         """Removes messages from a user."""
         await self.do_removal(ctx, search, lambda e: e.author == member)
 
