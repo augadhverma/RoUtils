@@ -84,6 +84,7 @@ class Bot(commands.Bot):
             owner_id=449897807936225290,
             case_insensitive=True,
             intents=intents,
+            enable_debug_events=True
         )
 
         self.loop.create_task(self.create_session())
@@ -91,8 +92,8 @@ class Bot(commands.Bot):
         self.colour = discord.Colour.blue()
         self.footer = 'RoUtils'
 
-        self.version_info = VersionInfo(major=2, minor=0, micro=2, releaselevel='final', serial=0)
-        self.__version__ = '2.0.2'
+        self.version_info = VersionInfo(major=2, minor=1, micro=0, releaselevel='final', serial=0)
+        self.__version__ = '2.1.0'
 
         for cog in initial_extensions:
             try:
