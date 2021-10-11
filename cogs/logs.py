@@ -133,6 +133,11 @@ class Logs(commands.Cog):
             footer=f'ID: {member.id}'
         )
 
+        roles = member.roles
+        roles.remove(member.guild.default_role)
+        if roles:
+            embed.add_field(name='Roles', value=', '.join(r.mention for r in roles), inline=False)
+
         await embed.post_log(self.bot, member.guild)
 
     @commands.Cog.listener()

@@ -41,6 +41,7 @@ class Settings(commands.Cog):
         
         log = settings.get('log', None)
         disabledChannels = settings.get('disabledChannels', [])
+        ticket = settings.get('ticket', 'None set')
         prefixes = [self.bot.user.mention]
         prefixes.extend(settings.get('prefixes', ['.']))
 
@@ -63,6 +64,7 @@ class Settings(commands.Cog):
         embed.add_field(name='Blacklisted Channels', value=disabled)
         embed.add_field(name='Prefixes', value='\n'.join(f'{i}. {p}' for i,p in enumerate(prefixes, 1)))
         embed.add_field(name='Mute Role', value=f'<@&{settings["muteRole"]}>')
+        embed.add_field(name='Ticket Category', value=f'<#{ticket}>' if isinstance(ticket, int) else ticket)
 
         await ctx.reply(embed=embed)
 
@@ -170,6 +172,16 @@ class Settings(commands.Cog):
             await ctx.tick(True)
         elif channel is None:
             await ctx.send(f'Current log channel is <#{settings["log"]}>')
+
+    @settings.command()
+    async def ticket(self, ctx: utils.Context, *, channel: Optional[discord.CategoryChannel]):
+        """Sets a category as the ticket category so tickets can be opened there."""
+        settings = await self.bot.utils.find_one({'type':'settings'})
+        if channel:
+            await self.bot.utils.update_one({'type':'settings'}, {'$set':{'ticket':channel.id}}, upsert=True)
+            await ctx.tick(True)
+        elif channel is None:
+            await ctx.send(f'Current Ticket Category is <#{settings.get("ticket")}>')
 
     @settings.group(aliases=['badwords'], invoke_without_command=True)
     async def badword(self, ctx: utils.Context):

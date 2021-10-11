@@ -118,6 +118,9 @@ class Handler(commands.Cog, command_attrs=dict(hidden=True)):
         elif isinstance(error, (commands.UserNotFound, commands.MemberNotFound)):
             return await ctx.reply(f'Could not find the user `{error.argument}`. Try again?')
 
+        elif isinstance(error, commands.TooManyArguments):
+            return await ctx.send(str(error))
+
         elif isinstance(error, commands.RoleNotFound):
             return await ctx.reply(f'Could not find the role `{error.argument}`. Try again?')
         
