@@ -21,6 +21,7 @@ from __future__ import annotations
 import discord
 from jishaku.paginators import PaginatorEmbedInterface
 import utils
+from utils.checks import INTERN, check_perms
 
 from typing import Optional
 from discord.ext import commands
@@ -163,11 +164,9 @@ class Tags(commands.Cog):
         Note that server moderators can delete your tag.
         """
 
-        cmds: set[commands.Command] = ctx.command.parent.commands
-        for c in cmds:
-            if (name.casefold() == c.name.casefold() or
-                name.casefold() in [a.casefold() for a in c.aliases]):
-                return await ctx.send(f'{name} is a reserved key word and cannot be used to create a tag.')
+        for cmd in ctx.bot.walk_commands():
+            if (cmd.name == name) or (name in cmd.aliases):
+                return await ctx.send(f'**{name}** is a reserved keyword and cannot be used to make tags.') 
 
         try:
             await self.get_tag(name)
@@ -512,6 +511,45 @@ class Tags(commands.Cog):
         user = user or ctx.author
 
         await ctx.invoke(self._list, user=user)
+
+    @commands.Cog.listener("on_message")
+    async def message_tags(self, message: discord.Message):
+        pre_checks = (
+            message.author.bot
+            or message.guild is None
+        )
+
+        if pre_checks:
+            return
+
+        ctx = await self.bot.get_context(message, cls=utils.Context)
+        if ctx.valid:
+            return
+        if ctx.prefix and message.content.startswith(ctx.prefix):
+            _, name = message.content.split(ctx.prefix, maxsplit=1)
+        else:
+            return
+
+        perms = await check_perms(ctx, {'manage_messages':True})
+        is_intern = INTERN in [r.id for r in message.author.roles]
+
+        if not (perms or is_intern):
+            settings: dict = await ctx.bot.utils.find_one({'type':'settings'})
+
+            if ctx.channel.id in settings.get('disabledChannels', []):
+                return
+
+        try:
+            tag = await self.get_tag(name, update_uses=True)
+        except RuntimeError:
+            pass
+        else:
+            items = tag.to_send()
+            view = items[1]
+            if isinstance(items[0], discord.Embed):
+                await ctx.send(embed=items[0], view=view, reference=ctx.replied_reference)
+            elif isinstance(items[0], str):
+                await ctx.send(items[0], view=view, reference=ctx.replied_reference)
 
 def setup(bot: utils.Bot):
     bot.add_cog(Tags(bot))
