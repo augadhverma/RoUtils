@@ -1,6 +1,6 @@
 """
-Holds Roblox Models.
-Copyright (C) 2021  Augadh Verma
+Somewhat useful models
+Copyright (C) 2021-present ItsArtemiz (Augadh Verma)
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -17,8 +17,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import datetime
+import discord
 
-from utils import CaseInsensitiveDict
+from typing import TYPE_CHECKING, Union
+from discord.ext import commands
+
+from .models import CaseInsensitiveDict
+from .context import Context
+
 
 def roblox_time(time: str) -> datetime.datetime:
     try:
@@ -30,103 +36,99 @@ def time_roblox(time: datetime.datetime = None) -> str:
     time = time or datetime.datetime.now(datetime.timezone.utc)
     return datetime.datetime.strftime(time, '%Y-%m-%dT%H:%M:%S.%fZ')
 
-class BaseUser:
-    name: str
+class Object:
+    __slots__ = ()
     id: int
-    display_name: str
-    profile_url: str
-    avatar_url: str
 
-    __slots__ = ('name', 'id', 'display_name', 'profile_url', 'avatar_url')
+class BaseUser(Object):
+    __slots__ = (
+        'name',
+        'id',
+        'display_name',
+        'profile_url',
+        'headshot_url',
+        '_raw_data'
+    )
+
+    if TYPE_CHECKING:
+        name: str
+        id: int
+        display_name: str
+        profile_url: str
+        headshot_url: str
+        _raw_data: Union[CaseInsensitiveDict, dict]
 
     def __init__(self, data: dict) -> None:
-        self._update(CaseInsensitiveDict(data))
+        self._raw_data = CaseInsensitiveDict(data)
 
-    def __int__(self) -> int:
-        return self.id
-
-    def __str__(self) -> str:
-        return self.name
-
-    def _update(self, data: CaseInsensitiveDict):
-        if not isinstance(data, CaseInsensitiveDict):
-            data = CaseInsensitiveDict(data)
-
-        self.name = data['name']
-        self.id = data['id']
-        self.display_name = data['displayname']
-        self.profile_url = f'https://www.roblox.com/users/{self.id}/profile'
-        self.avatar_url = f'https://www.roblox.com/Thumbs/Avatar.ashx?x=720&y=720&Format=Png&userId={self.id}'
+        self.name = self._raw_data['name']
+        self.id = self._raw_data['id']
+        self.display_name = self._raw_data['displayname']
+        self.profile_url = f"https://www.roblox.com/users/{self.id}/profile"
+        self.headshot_url = f"https://www.roblox.com/headshot-thumbnail/image?userId={self.id}&width=420&height=420"
 
 class User(BaseUser):
+    __slots__ = ('description', 'created_at', 'is_banned')
 
-    __slots__ = BaseUser.__slots__ + ('description', 'created_at', 'is_banned')
+    if TYPE_CHECKING:
+        description: str
+        created_at: datetime.datetime
+        is_banned: bool
 
-    description: str
-    created_at: datetime.datetime
-    is_banned: bool
-
-    def __init__(self, data: dict):
+    def __init__(self, data: dict) -> None:
         super().__init__(data)
 
-    def __eq__(self, o: object) -> bool:
-        return isinstance(o, BaseUser) and o.id == self.id
+        self.description = self._raw_data.get('description', '')
+        self.created_at = roblox_time(self._raw_data['created'])
+        self.is_banned = self._raw_data.get('isbanned', False)
 
-    def __ne__(self, o: object) -> bool:
-        return not self.__eq__(o)
+class Role(Object):
+    __slots__ = ('name', 'id', 'rank', 'membercount', '_raw_data')
 
-    def _update(self, data: CaseInsensitiveDict):
-        super()._update(data)
+    if TYPE_CHECKING:
+        name: str
+        id: int
+        rank: int
+        membercount: int | None
 
-        self.description = data.get('description', '')
-        self.created_at = roblox_time(data['created'])
-        self.is_banned = data.get('isBanned', False)
+    def __init__(self, data: dict) -> None:
+        self._raw_data = CaseInsensitiveDict(data)
 
-class Role:
-
-    __slots__ = ('name', 'id', 'membercount', 'rank')
-
-    name: str
-    id: int
-    rank: int
-    membercount: int
-
-    def __init__(self, data: dict):
-        self._update(CaseInsensitiveDict(data))
-
-    def __str__(self) -> str:
-        return self.name
-
-    def __int__(self) -> int:
-        return self.id
-
-    def __eq__(self, o: object) -> bool:
-        return isinstance(o, self.__class__) and o.id == self.id
-
-    def __ne__(self, o: object) -> bool:
-        return not self.__eq__(o)
-
-    def _update(self, data: CaseInsensitiveDict):
-        self.id = data['id']
-        self.name = data['name']
-        self.rank = data['rank']
-        self.membercount = data.get('membercount', 0)
+        self.id = self._raw_data['id']
+        self.name = self._raw_data['name']
+        self.rank = self._raw_data['rank']
+        self.membercount = self._raw_data.get('membercount')
 
 class Member(BaseUser):
+    __slots__ = ('group_id', 'role')
 
-    def __init__(self, data: dict, group_id: int) -> None:
-        super()._update(CaseInsensitiveDict(data))
+    if TYPE_CHECKING:
+        group_id: int
+        role: Role
+
+    def __init__(self, data: dict, role: dict, group_id: int) -> None:
+        super().__init__(data)
+
         self.group_id = group_id
-        self.role = Role(data['role'])
+        self.role = Role(role)
 
-    def __repr__(self) -> str:
-        return f'<Member id={self.id} name={self.name!r} group_id={self.group_id} role={self.role!r}>'
+class RoWifiUser(Object):
+    __slots__ = ('id', 'guild_id', 'roblox_user', 'discord_user', 'is_verified')
+    
+    if TYPE_CHECKING:
+        id: int
+        guild_id: int
+        roblox_user: User | None
+        discord_user: discord.User | None
+        is_verified: bool
 
-    def __eq__(self, o: object) -> bool:
-        return isinstance(o, BaseUser) and o.id == self.id
+    def __init__(self, id: int, guild_id: int, is_verified: bool, roblox_user: User | None = None) -> None:
+        self.id = id
+        self.guild_id = guild_id
+        self.roblox_user = roblox_user
+        self.discord_user = None
+        self.is_verified = is_verified
 
-    def __ne__(self, o: object) -> bool:
-        return self.__eq__(o)
-
-    def _update(self, data: CaseInsensitiveDict):
-        super()._update(CaseInsensitiveDict(data))
+    async def fetch_discord_user(self, ctx: Context) -> discord.User:
+        self.discord_user = await commands.UserConverter().convert(ctx, str(self.id))
+        return self.discord_user

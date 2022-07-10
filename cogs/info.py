@@ -1,6 +1,6 @@
 """
-The Information module - for some basic info.
-Copyright (C) 2021  Augadh Verma
+Things related to information of users.
+Copyright (C) 2021-present ItsArtemiz (Augadh Verma)
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -16,407 +16,343 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-from __future__ import annotations
-
-import datetime
-import time
+import json
+import re
 import discord
-import pkg_resources
-import utils
-import psutil
+import datetime
+
+from discord import app_commands
+from discord.ext import commands
+
+from utils import (
+    Bot,
+    is_bot_channel,
+    User,
+    RoWifiUser,
+    request,
+    Embed,
+    Cache,
+    Member,
+    TextPages,
+    format_dt,
+    check_perms,
+    has_setting_role,
+    Context,
+    SimplePages
+)
 
 from typing import Optional, Union
-from collections import Counter
-from discord.ext import commands
-from jishaku.paginators import PaginatorEmbedInterface
 
-cache = utils.Cache(None)
+ROWIFIAPI = 'https://api.rowifi.link/v1/users/{0}?guild_id={1}'
+USER = 'https://users.roblox.com/v1/users/{0}'
+GROUP = 'https://groups.roblox.com/{0}/{1}'
 
-TICKETLOGS = 671795168655048704
-ROWIFIGUILD = 576325772629901312
-TICKETCATEGORY = 680039943199784960
-
-def guild_info(user: Union[discord.Member, discord.User]):
-    if isinstance(user, discord.User):
-        return ''
+class TicketPageEntry:
+    def __init__(self, entry: str):
+        self.entry = entry
     
-    roles = user.roles
-    roles.remove(user.guild.default_role)
-    if roles:
-        roles = ', '.join([r.mention for r in roles]) if len(roles) <= 7 else f'{len(roles)} roles'
-    else:
-        roles = ''
+    def __str__(self) -> str:
+        return self.entry.replace("))", ")", 1)
 
-    info = f'**Joined:** {utils.format_date(user.joined_at)}\n'\
-           f'**Roles:** {roles}'
+class TicketPages(SimplePages):
+    def __init__(self, entries: list[str], *, interaction: discord.Interaction, bot: Bot, per_page: int = 12, **kwargs) -> None:
+        converted = [TicketPageEntry(entry) for entry in entries]
+        
+        super().__init__(converted, per_page=per_page, interaction=interaction, bot=bot, **kwargs)
 
-    return info
-
-class Info(commands.Cog, name='Information'):
-    """The Information Module holds commands which are used to get info on someone or something."""
-    def __init__(self, bot: utils.Bot):
+class Information(commands.Cog):
+    def __init__(self, bot: Bot) -> None:
         self.bot = bot
-        self.process = psutil.Process()
+        self.__rowifi_user_cache = Cache(seconds=180) #{'discord_id-guild_id':user, }
+        self.__user_cache = Cache() #{roblox_id:user, }
+        self.__member_cache = Cache(seconds=180) #{roblox_id-group_id, member}
 
+    async def get_user(self, roblox_id: int, /) -> User:
+        if self.__user_cache.get(roblox_id):
+            return self.__user_cache[roblox_id]
 
-    @utils.is_bot_channel()
-    @commands.command(aliases=['ui'])
-    async def userinfo(self, ctx: utils.Context, *, user: Optional[Union[discord.Member, discord.User]]):
-        """Gives discord and roblox info on a user."""
+        data = await request(self.bot.session, 'GET', USER.format(roblox_id))
+        user = User(data)
 
-        user = user or ctx.author
+        self.__user_cache[roblox_id] = user
+        return user
 
-        embed = cache.get(user.id)
-        if embed:
-            if embed[0][1] == ctx.guild.id:
-                return await ctx.send(embed=embed[0][0])
+    async def get_rowifi_user(self, discord_id: int, guild_id: int, /) -> RoWifiUser:
+        if self.__rowifi_user_cache.get(f'{discord_id}-{guild_id}'):
+            return self.__rowifi_user_cache[f'{discord_id}-{guild_id}']
 
-        is_verified = await utils.request(
-            self.bot.session,
-            'GET',
-            f'https://api.rowifi.link/v1/users/{user.id}?guild_id={ctx.guild.id}'
+        data = await request(self.bot.session, 'GET', ROWIFIAPI.format(discord_id, guild_id))
+
+        user = RoWifiUser(discord_id, guild_id, data['success'])
+
+        if data['success']:
+            roblox_user = await self.get_user(data['roblox_id'])
+            user.roblox_user = roblox_user
+
+        self.__rowifi_user_cache[f'{discord_id}-{guild_id}'] = user
+        return user
+
+    @is_bot_channel()
+    @app_commands.command(name="userinfo", description="Shows information about the user.")
+    @app_commands.describe(user="The user whose information to show.")
+    async def userinfo(self, interaction: discord.Interaction, user: Optional[Union[discord.User, discord.Member]]) -> None:
+        user = user or interaction.user
+        embed = Embed(
+            bot=self.bot,
+            title="User Information",
+            description=""
         )
+        embed.set_author(name=str(user), icon_url=user.display_avatar.url)
 
-        if is_verified.get('success', False):
-            r = await utils.request(self.bot.session, 'GET', f'https://users.roblox.com/v1/users/{is_verified.get("roblox_id")}')
-            RoUser = utils.RoWifiUser(r, is_verified.get('discord_id'), is_verified.get('guild_id', None))
+        rowifi_user = await self.get_rowifi_user(user.id, interaction.guild_id)
+        if rowifi_user.is_verified:
+            embed.add_field(
+                name="Roblox Information",
+                value=f"**Name:** {rowifi_user.roblox_user.name}\n"\
+                      f"**ID:** {rowifi_user.roblox_user.id}\n"\
+                      f"**Created At:** {format_dt(rowifi_user.roblox_user.created_at)}",
+                inline=False
+            )
+            embed.set_thumbnail(url=rowifi_user.roblox_user.headshot_url)
+            view = discord.ui.View(timeout=None)
+            view.add_item(discord.ui.Button(style=discord.ButtonStyle.link, label="Roblox Profile", url=rowifi_user.roblox_user.profile_url))
+
         else:
-            RoUser = utils.FakeUser()
+            embed.description += "\nCannot fetch ROBLOX Profile as this user is not verified with RoWifi."
+            embed.set_thumbnail(url=user.display_avatar.url)
+            view = discord.utils.MISSING
 
-        embed = discord.Embed(
-            title = 'User Information',
-            colour = self.bot.colour,
-            timestamp = utils.utcnow()
-        )
+        def guild_info() -> str:
+            info = ''
+            if isinstance(user, discord.Member):
+                roles = user.roles
+                roles.remove(interaction.guild.default_role)
+                if roles:
+                    string = ', '.join([r.mention for r in roles]) if len(roles) <= 7 else f'{len(roles)} roles'
+                else:
+                    string = ''
 
-        embed.set_author(name=str(user), icon_url=user.avatar.url)
-        embed.set_footer(text=ctx.bot.footer)
-        embed.set_thumbnail(url=RoUser.avatar_url)
+                info = f'**Joined At:** {format_dt(user.joined_at)}\n**Roles:** {string}'
+            else:
+                embed.description = "*This user is not in the current server.*"
+            return info
 
         embed.add_field(
-            name='Roblox Information',
-            value=f'**Name:** {RoUser.name}\n'\
-                  f'**ID:** {RoUser.id}\n'\
-                  f'**Created:** {utils.format_date(RoUser.created_at)}',
+            name="Discord Information",
+            value=f"**Name:** {user.display_name}\n"\
+                  f"**ID:** {user.id}\n"\
+                  f"**Created At:** {format_dt(user.created_at)}\n"\
+                  f"{guild_info()}",
             inline=False
         )
+        if not embed.description:
+            embed.description = None
 
-        embed.add_field(
-            name='Discord Information',
-            value=f'**Name:** {user.display_name}\n'\
-                  f'**ID:** {user.id}\n'\
-                  f'**Created At:** {utils.format_date(user.created_at)}\n'\
-                  f'{guild_info(user)}',
-            inline=False
+        await interaction.response.send_message(embed=embed, view=view)
+
+    @is_bot_channel()
+    @app_commands.command(name="user-in-group", description="Checks if a user is in a ROBLOX Group.")
+    @app_commands.describe(user="The user tho check for", group_id="The id of the group to check in for.", userid="The roblox user id to looks for.", username="Roblox user name to look for.")
+    async def uig(self, interaction: discord.Interaction, user: Optional[discord.User], userid: Optional[int], username: Optional[str], group_id: int) -> None:
+        user_id = None
+        session = self.bot.session
+        if user:
+            data = await request(session, 'GET', ROWIFIAPI.format(user.id, interaction.guild_id))
+            if data['success']:
+                user_id = data['roblox_id']
+        elif userid:
+            user_id = userid
+        elif username:
+            data = await request(session, 'POST', 'https://users.roblox.com/v1/usernames/users', data={'usernames':[username]})
+            if data['data']:
+                user_id = data['data'][0]['id']
+        
+        if user_id is None:
+            return await interaction.response.send_message(f"Cannot find the ROBLOX Profile of user `{user or userid or username}`.")
+
+        if self.__member_cache.get(f'{user_id}-{group_id}'):
+            member: Member = self.__member_cache[f'{user_id}-{group_id}']
+            return await interaction.response.send_message(
+                f"{member.name} is in the group with id `{group_id}`. (Role: {member.role.name})"
+            )
+
+        ro_user = await self.get_user(user_id)
+        group_data = await request(session, 'GET', f'https://groups.roblox.com/v2/users/{user_id}/groups/roles')
+        for group in group_data['data']:
+            if group['group']['id'] == group_id:
+                member = Member(ro_user._raw_data, group['role'], group_id)
+                self.__member_cache[f'{user_id}-{group_id}'] = member
+                return await interaction.response.send_message(
+                    f"{member.name} is in the group with id `{group_id}`. (Role: {member.role.name})"
+                )
+
+        return await interaction.response.send_message(f"{ro_user.name} is not in the group with id `{group_id}`.")
+
+    async def send_paginator(self, interaction: discord.Interaction, content: str) -> None:
+        pages = TextPages(content, prefix="```json\n", interaction=interaction, bot=self.bot)
+        await pages.start()
+
+    async def custom_cooldown(interaction: discord.Interaction) -> Optional[app_commands.Cooldown]:
+        pre = (
+            await check_perms(interaction, {'manage_messages':True}) or
+            await has_setting_role(interaction, 'bypass')
         )
 
-        if not isinstance(user, discord.Member):
-            embed.description = '*This user is not in the current server.*'
+        if pre:
+            return None
+        return app_commands.Cooldown(1, 5.0)
 
-        cache[user.id] = (embed, ctx.guild.id)
+    @is_bot_channel()
+    @app_commands.checks.dynamic_cooldown(custom_cooldown, key=lambda interaction: interaction.guild.id)
+    @app_commands.command(name="raw-message", description="Gives out the raw json of the message.")
+    @app_commands.describe(channel="The channel the message belongs to.", message_id="The id of the message.")
+    async def rawmsg(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel], message_id: str) -> None:
+        channel = channel or interaction.channel
+        try:
+            response = await self.bot.http.get_message(channel.id, int(message_id))
+        except Exception as e:
+            return await interaction.response.send_message(str(e), ephemeral=True)
+        else:
+            data = json.dumps(response, indent=4)
+            await self.send_paginator(interaction, data)
 
-        await ctx.reply(embed=embed)
+    raw = app_commands.Group(name="raw", description="Parent of raw api searches")
 
-    @utils.is_bot_channel()
-    @commands.command(aliases=['av'])
-    async def avatar(self, ctx: utils.Context, *, user: Optional[discord.User]):
-        """Displays avatar of the user."""
-        user = user or ctx.author
-        
-        def url_as(format: str) -> str:
-            return user.avatar.with_format(format).url
-        
-        embed = discord.Embed(
-            title = f'Avatar for {user}',
-            description=(
-                f'Link As\n'\
-                f'[png]({url_as("png")}) | [jpg]({url_as("jpg")}) | [webp]({url_as("webp")})'
-            ),
-            colour=ctx.bot.colour
-        )
-        
-        embed.set_image(url=user.avatar.url)
-        await ctx.reply(embed=embed)
+    async def get_json_content(self, url: str) -> str:
+        data = await request(self.bot.session, 'GET', url)
+        return json.dumps(data, indent=4)
 
-    @utils.is_intern()
-    @commands.command()
-    async def notify(
-        self,
-        ctx: utils.Context,
-        member: Optional[discord.Member],
-        channel: Optional[discord.TextChannel],
-        *,
-        notification: Optional[str]
-    ):
-        """Notifies the user about something."""
+    @is_bot_channel()
+    @app_commands.checks.dynamic_cooldown(custom_cooldown, key=lambda interaction: interaction.guild.id)
+    @raw.command(name="api", description="Gives JSON content of the GET Method used on the api.")
+    @app_commands.describe(url="The API url to lookup.")
+    async def api(self, interaction: discord.Interaction, url: str) -> None:
+        content = await self.get_json_content(url)
+        await self.send_paginator(interaction, content)
 
-        if member and not notification:
-            return await ctx.send("Please include the notification aswell.")
+    @is_bot_channel()
+    @app_commands.checks.dynamic_cooldown(custom_cooldown, key=lambda interaction: interaction.guild.id)
+    @raw.command(name="group-roles", description="Gives the JSON content of the ROBLOX Group's roles.")
+    @app_commands.describe(group_id="The id of the group.")
+    async def group_roles(self, interaction: discord.Interaction, group_id: int) -> None:
+        content = await self.get_json_content(GROUP.format('v1', f'groups/{group_id}/roles'))
+        await self.send_paginator(interaction, content)
 
-        elif channel:
-            if channel.category and channel.category_id == TICKETCATEGORY:
-                async for message in channel.history(oldest_first=True):
-                    if message.embeds:
-                        for word in message.embeds[0].description.split():
-                            try:
-                                member = await commands.MemberConverter().convert(ctx, word)
-                                if notification is None:
-                                    notification = f"Your ticket {channel.mention} has been inactive for a while. Please respond in the ticket so our team can take further actions."
-                            except commands.BadArgument:
-                                pass
-                            else:
-                                break
+    @is_bot_channel()
+    @app_commands.checks.dynamic_cooldown(custom_cooldown, key=lambda interaction: interaction.guild.id)
+    @raw.command(name="group", description="Gives the JSON content of the ROBLOX Group.")
+    @app_commands.describe(group_id="The id of the group.")
+    async def group(self, interaction: discord.Interaction, group_id: int) -> None:
+        content = await self.get_json_content(GROUP.format('v1', f'groups/{group_id}'))
+        await self.send_paginator(interaction, content)
+
+    @is_bot_channel()
+    @app_commands.checks.dynamic_cooldown(custom_cooldown, key=lambda interaction: interaction.guild.id)
+    @raw.command(name="user", description="Gives the JSON content of the ROBLOX User.")
+    @app_commands.describe(user_id="The id of the user.")
+    async def user(self, interaction: discord.Interaction, user_id: int) -> None:
+        content = await self.get_json_content(USER.format(user_id))
+        await self.send_paginator(interaction, content)
+
+    @is_bot_channel()
+    @app_commands.checks.dynamic_cooldown(custom_cooldown, key=lambda interaction: interaction.guild.id)
+    @raw.command(name="user-roles", description="Gives the JSON content of the ROBLOX User roles in different groups.")
+    @app_commands.describe(user_id="The id of the user.")
+    async def user_roles(self, interaction: discord.Interaction, user_id: int) -> None:
+        content = await self.get_json_content(GROUP.format('v2', f'users/{user_id}/groups/roles'))
+        await self.send_paginator(interaction, content)
+
+    @app_commands.command(name="tickets", description="For internal management of the tickets bot.")
+    @app_commands.describe(member="To show tickets for a specific user. (Available to admins only.)")
+    async def tickets(self, interaction: discord.Interaction, member:Optional[discord.Member]) -> None:
+        await interaction.response.send_message(f"Loading...")
+        ctx = await self.bot.get_context(interaction, cls=Context)
+        if member is None and interaction.user.guild_permissions.administrator:
+            member = None
+        elif interaction.user.guild_permissions.administrator:
+            member = member or interaction.user
+        else:
+            member = interaction.user
+
+        now = discord.utils.utcnow()
+        reference = None
+        last = None
+        total = []
+        unclaimed = []
+
+        if now.month == 1:
+            after = now.replace(month=12)
+        else:
+            after = now.replace(month=now.month-1)
+
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
+        if settings.tickets_channel is None:
+            return await interaction.edit_original_message(content="No ticket category has been set for.", ephemeral=True)
+        channel = interaction.guild.get_channel(settings.tickets_channel)
+        if channel is None:
+            try:
+                channel = await interaction.guild.fetch_channel(settings.tickets_channel)
+            except:
+                return await interaction.edit_original_message(content="Fetching the channel failed!")
+        url_regex = re.compile('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', re.IGNORECASE)
+        async for message in channel.history(limit=None, after=after):
+            if message.embeds and message.author.id == 508391840525975553:
+                embed = message.embeds[0]
+                ticket_id = embed.fields[0].value
+                claimed_by = embed.fields[-1].value
+
+                try:
+                    transcript = message.components[0].children[0].url
+                except:
+                    transcript = url_regex.findall(embed.fields[-3].value)[0]
+
+                if transcript is None:
+                    transcript = url_regex.findall(embed.fields[-3].value)[0]
+
+                if reference is None:
+                    reference = message
+
+                last = message
+
+                if member is None:
+                    total.append(f'[Ticket #{ticket_id}]({transcript}) - {claimed_by}')
+                    if claimed_by.casefold() == 'not claimed':
+                        unclaimed.append(f"[Ticket #{ticket_id}]({transcript})")
+                else:
+                    try:
+                        staff = await commands.UserConverter().convert(ctx, claimed_by)
+                    except:
+                        pass
                     else:
-                        return await ctx.send("Could not find the user.")
-                    break
-            else:
-                return await ctx.send("Channel based notifications are only for ticket channels.")
-
+                        if staff.id == member.id:
+                            total.append(f'[Ticket #{ticket_id}]({transcript})')
+        if len(total) == 0:
+            return await interaction.edit_original_message(content="No tickets to show.")
         if member is None:
-            return await ctx.send("Could not find the user.")
-
-        embed = discord.Embed(
-            colour = ctx.author.colour,
-            description = notification,
-            timestamp = utils.utcnow()
-        )
-
-        embed.set_author(name='Notification from RoWifi Staff', icon_url='https://cdn.discordapp.com/emojis/733311296732266577.png?v=1')
-
-        try:
-            await member.send(embed=embed)
-            await ctx.tick()
-        except discord.Forbidden:
-            await ctx.send("Could not notify the user at this time. They either have DMs closed or have blocked me.")
-
-        embed.add_field(name='Notification Sent to', value=f'{member.mention} - `{member.id}`')
-        embed.set_footer(
-            text=f'Sent from: {ctx.author} - {ctx.author.id}',
-            icon_url=ctx.author.avatar.url
-        )
-
-        await utils.post_log(self.bot, ctx.guild, embed=embed)
-
-    @utils.is_bot_channel()
-    @commands.command()
-    async def uig(self, ctx: utils.Context, user: Union[discord.User, int, str], group_id: int):
-        """Checks if a user is in the given Roblox group."""
-
-        if isinstance(user, discord.User):
-            r = await utils.request(ctx.session, 'GET', f'https://api.rowifi.link/v1/users/{user.id}?guild_id={ctx.guild.id}')
-            if r['success']:
-                userId = r['roblox_id']
-            else:
-                return await ctx.reply('The given user is not verified with RoWifi and hence I cannot look up their roblox id.')
-
-        elif isinstance(user, int):
-            userId = user
-
-        elif isinstance(user, str):
-
-            r = await utils.request(
-                ctx.session,
-                'POST',
-                'https://users.roblox.com/v1/usernames/users',
-                data={'usernames':[user]}
-            )
-
-            if r['data']:
-                userId = r['data'][0]['id']
-            else:
-                return await ctx.reply(f'Cannot find the user "{user}"')
-
-        r = await utils.request(
-            ctx.session,
-            'GET',
-            f'https://groups.roblox.com/v2/users/{userId}/groups/roles'
-        )
-
-        try:
-            data = r['data']
-        except KeyError:
-            return await ctx.reply('Cannot lookup the given user\'s groups at the moment. Try again later?')
+            claimed = len(total) - len(unclaimed)
+            title = f"Claimed: {claimed}/{len(total)} (Unclaimed: {len(unclaimed)})"
         else:
-            user: dict =  await utils.request(ctx.session, 'GET', f'https://users.roblox.com/v1/users/{userId}')
+            title = f"Tickets handled"
 
-            for g in data:
-                if g['group']['id'] == group_id:
-                    member = utils.Member(
-                        {
-                            'name':user['name'],
-                            'id':user['id'],
-                            'displayName':user['displayName'],
-                            'role':{
-                                'id':g['role']['id'],
-                                'name':g['role']['name'],
-                                'rank':g['role']['rank'],
-                                'membercount':0
-                            }
-                        },
-                        group_id
-                    )
-                    return await ctx.reply(f'{member} is in group with id {group_id}. They have the role: {member.role} (Rank: {member.role.rank})')
-            name = user['name']
-            return await ctx.reply(f'The given user "{name}" is not in the given group.')
-
-    @uig.error
-    async def uig_err(self, ctx: utils.Context, error: commands.CommandError):
-        error = getattr(error, 'original', error)
-        if isinstance(error, utils.HTTPException):
-            url = error.response.url
-            status = error.status
-            json = error.json
-
-            embed = discord.Embed(
-                title = 'A Roblox side error occured',
-                description = f'Message: {json["errors"][0]["message"]}',
-                colour = discord.Colour.red(),
-                timestamp = utils.utcnow()
-            )
-
-            embed.set_footer(text=f'Status Code: {status}')
-
-            embed.add_field(name='Url', value=url, inline=False)
-            embed.add_field(name='Raw Error', value=f'```json\n{json}```', inline=False)
-
-            await ctx.send(embed=embed)
-
-    @utils.is_bot_channel()
-    @commands.command()
-    async def ping(self, ctx: utils.Context):
-        """Shows bot ping"""
-        start = time.perf_counter()
-        msg = await ctx.reply('Pinging...')
-        end = time.perf_counter()
-        duration = (end-start)*1000
-
-        embed = discord.Embed(
-            colour=ctx.colour
+        embed = Embed(
+            bot=self.bot,
+            title=title
         )
+
         embed.add_field(
-            name='<a:typing:828718094959640616> | Typing',
-            value=f'`{duration:.2f}ms`'
+            name="Tickets taken from",
+            value=f"**[From:]({reference.jump_url})** {format_dt(after)}\n"\
+                  f"**[Until:]({last.jump_url})** {format_dt(now)}",
+            inline=False
         )
-        embed.add_field(
-            name='🔁 | Websocket',
-            value=f'`{(self.bot.latency*1000):.2f}ms`'
-        )
-
-        await msg.edit(content=None, embed=embed)
-
-    def format_commit(self, commit):
-        gt = datetime.datetime.strptime(f"{commit['commit']['committer']['date']}", '%Y-%m-%dT%H:%M:%SZ')
-        now = datetime.datetime.now()
-        offset = now.timestamp() - (datetime.datetime.utcnow().timestamp() - gt.timestamp()) # I have no idea why this works
+        pages = TicketPages(total, interaction=interaction, bot=self.bot, embed=embed)
+        await pages.start()
         
-        # [`hash`](url) message (offset)
-        return f"[`{commit['sha'][0:6]}`]({commit['html_url']}) {commit['commit']['message']} (<t:{int(offset)}:R>)"
-        
-    async def get_last_commits(self, count=3):
-
-        if self.bot.version_info.releaselevel == 'final':
-            branch = 'main'
-        else:
-            branch = 'dev'
-        url = f'https://api.github.com/repos/ItsArtemiz/RoUtils/commits?sha={branch}'
-
-        r = await utils.request(
-            self.bot.session,
-            'GET',
-            url
-        )
-
-        return '\n'.join(self.format_commit(c) for c in r[:count])
-
-    # https://api.github.com/repos/ItsArtemiz/RoUtils/commits?sha=branch
-
-    @utils.is_bot_channel()
-    @commands.command()
-    async def about(self, ctx: utils.Context):
-        """Gives info on the bot."""
-
-        commits = await self.get_last_commits()
-
-        embed = discord.Embed(
-            title=f'RoUtils {ctx.version}',
-            colour = ctx.colour,
-            description = f'Latest Changes:\n{commits}'
-        )
-
-        version = pkg_resources.get_distribution('discord.py').version
-        embed.set_footer(text=f'Made with discord.py v{version}', icon_url='http://i.imgur.com/5BFecvA.png')
+        # if unclaimed and member is None:
+        #     embed.title = "Unclaimed Tickets!"
+        #     unclaimed_pages = TicketPages(unclaimed, interaction=interaction, bot=self.bot, per_page=15, embed=embed)
+        #     await unclaimed_pages.start()
 
 
-        guild = self.bot.get_guild(ROWIFIGUILD)
-        owner = guild.get_member(self.bot.owner_id)
-        if not owner:
-            owner = await guild.fetch_member(self.bot.owner_id)
-
-        embed.set_author(name=str(owner), icon_url=owner.avatar.url)
-
-        embed.add_field(name='Commands Loaded', value=f'{len(self.bot.commands)}')
-        embed.add_field(name='Uptime', value=utils.format_dt(self.bot.uptime, 'R'))
-        
-        memory_usage = self.process.memory_full_info().uss / 1024**2
-        cpu_usage = self.process.cpu_percent() / psutil.cpu_count()
-        
-        embed.add_field(name='Process', value=f'{memory_usage:.2f} MiB\n{cpu_usage:.2f}% CPU')
-        await ctx.send(embed=embed)
-
-    @utils.is_admin()
-    @commands.group(invoke_without_command=True)
-    async def role(self, ctx: utils.Context, member: commands.Greedy[discord.Member], role: commands.Greedy[discord.Role]):
-        """Adds role(s) to member(s)
-        
-        You can provide multiple members and roles at once.
-        """
-
-        if member is None and role is None:
-            return await ctx.send(f'Missing either member or role parameeter')
-
-        for m in member:
-            try:
-                await m.add_roles(*role)
-            except Exception as e:
-                await ctx.send(e)
-
-        await ctx.tick(True)
-
-    @utils.is_admin()
-    @role.command()
-    async def remove(self, ctx: utils.Context, member: commands.Greedy[discord.Member], role: commands.Greedy[discord.Role]):
-        """Removes role(s) from member(s)."""
-
-        if member is None and role is None:
-            return await ctx.send(f'Missing either member or role parameeter')
-
-        for m in member:
-            try:
-                await m.remove_roles(*role)
-            except Exception as e:
-                await ctx.send(e)
-
-        await ctx.tick(True)
-
-    @utils.is_bot_channel()
-    @role.command(name='info')
-    async def role_info(self, ctx: utils.Context, *, role: discord.Role):
-        """Gives info on the role given."""
-
-        embed = discord.Embed(
-            title='Role Info',
-            colour=role.colour,
-            timestamp=role.created_at,
-            description=f'Name: {role.name}\n'\
-                        f'ID: `{role.id}`\n'\
-                        f'Members: {len(role.members)}\n'\
-                        f'Colour: {role.colour}'
-        )
-
-        embed.set_footer(text='Created at')
-
-        await ctx.send(embed=embed)
-        
-
-def setup(bot: utils.Bot):
-    bot.add_cog(Info(bot))
+async def setup(bot: Bot):
+    await bot.add_cog(Information(bot))
