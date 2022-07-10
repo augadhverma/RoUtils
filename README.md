@@ -1,35 +1,41 @@
-## RoUtils - A Utility Bot for RoWifi HQ
+# RoUtils
 
-A bot custom made for moderating [RoWifiHQ](https://discord.gg/utAQwTX).
+Utility bot for [RoWifi HQ](https://discord.gg/vkfasCRNuD) Discord Server.
 
 ## Running
 
-RoUtils is hosted on `python 3.9.5` but make sure you have `python 3.8.5` or higher.
+The bot runs on python 3.10.5 and uses the [discord.py](https://github.com/Rapptz/discord.py/) library.
 
-**Install dependencies**
+### Installing Dependencies
 + `pip install -U -r requirements.txt`
 
-**Create a database in MongoDB**
-+ Configure it however you need it.
+or download the requirements from the [requirements.txt](https://github.com/ItsArtemiz/RoUtils/blob/main/requirements.txt) file.
 
-**Create a .env file and the following to it**
+### Create a database in MongoDB
++ The database schema are given in the [models.py](https://github.com/ItsArtemiz/RoUtils/blob/main/utils/models.py) file.
+
+### Starting the bot with tokens
+
+Create a `.env` file with the following items:
 ```
-BOT_TOKEN=<Your Bot Token>
-DB_TOKEN=<MongoDB Token>
+TOKEN=Enter you bot token here
+URI=Enter MongoDB URI here
 ```
 
 ## Disclaimer
 
-### License
+### Licenses
 
-This piece of software comes with [GNU General Public License V3](https://www.gnu.org/licenses/)
+This software comes with [GNU General Public License V3](https://www.gnu.org/licenses/)
 
 Check [LICENSE](https://github.com/ItsArtemiz/RoUtils/blob/main/LICENSE) for more info.
 
-### Self Hosting
+### Contributing
 
-Self-hosting is not encouraged and won't be helped with. This is only here for educational purposes.
+If you want to contribute to this bot, please make a PR to the `dev` branch.
 
-## Contributing
+### About the Author
 
-In order to contribute to this project and help RoWifi HQ, you can make a PR to the `dev` branch. PRs to the `main` branch will be rejected straight up. Also make sure to test your code before making a PR!
+This bot was written by [ItsArtemiz](https://discord.com/users/449897807936225290) (Augadh Verma)
+
+Documentation of the commands offered by the bot can be found [here](https://rowifi.notion.site/rowifi/a89fa0254d9e4b68b57383f139bb5d50?v=25d1138d1caf4fcc91f77ff3248e3f81).

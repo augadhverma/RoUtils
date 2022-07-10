@@ -1,6 +1,6 @@
 """
-The Settings module - for bot settings.
-Copyright (C) 2021  Augadh Verma
+The settings module.
+Copyright (C) 2021-present ItsArtemiz (Augadh Verma)
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -16,432 +16,433 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-from __future__ import annotations
-
 import discord
-import utils
-import random
 
+from typing import Literal, Optional, Union
 from discord.ext import commands, tasks
-from typing import List, Literal, Optional
-from jishaku.paginators import PaginatorEmbedInterface
+from discord import app_commands
+from utils import Bot, Context, Embed, SimplePages, is_admin
+
+SNOWFLAKE_TYPE = Literal['role', 'user', 'channel']
 
 class Settings(commands.Cog):
-    def __init__(self, bot: utils.Bot) -> None:
+    def __init__(self, bot: Bot) -> None:
         self.bot = bot
-        self.changing_status.start()
-
-    def cog_check(self, ctx: utils.Context):
-        return ctx.guild and ctx.author.guild_permissions.administrator == True
-
-    @commands.group(invoke_without_command=True)
-    async def settings(self, ctx: utils.Context):
-        """Shows bot settings."""
-        settings = await self.bot.utils.find_one({'type':'settings'})
-        
-        log = settings.get('log', None)
-        disabledChannels = settings.get('disabledChannels', [])
-        ticket = settings.get('ticket', 'None set')
-        prefixes = [self.bot.user.mention]
-        prefixes.extend(settings.get('prefixes', ['.']))
-
-        if self.bot.version_info.releaselevel != 'final':
-            prefixes.extend(['b.', 'b!'])
-                
-        embed = discord.Embed(title='Settings', colour=ctx.colour, timestamp=utils.utcnow())
-        embed.set_footer(text=ctx.footer)
-        
-        channel = 'None set'
-        disabled = 'None disabled'
-
-        if log:
-            channel = f'<#{log}>'
-
-        if disabledChannels:
-            disabled = '\n'.join(f'{i}. <#{c}>' for i, c in enumerate(disabledChannels, 1))
-
-        embed.add_field(name='Log Channel', value=channel)
-        embed.add_field(name='Blacklisted Channels', value=disabled)
-        embed.add_field(name='Prefixes', value='\n'.join(f'{i}. {p}' for i,p in enumerate(prefixes, 1)))
-        embed.add_field(name='Mute Role', value=f'<@&{settings["muteRole"]}>')
-        embed.add_field(name='Ticket Category', value=f'<#{ticket}>' if isinstance(ticket, int) else ticket)
-
-        await ctx.reply(embed=embed)
-
-    @settings.command(name='commands', aliases=['command'])
-    async def cmds(self, ctx: utils.Context, channel: Optional[discord.TextChannel], *, option: str):
-        """Enables or Disables commands in a channel.
-        
-        Enable using: `enable` or `on`
-        Disable using: `disable` or `off`
-        """
-        channel = channel or ctx.channel
-        settings = await self.bot.utils.find_one({'type':'settings'})
-        channels = settings.get('disabledChannels', [])
         
 
-        if option in ('disable', 'off'):
-            channels.append(channel.id)
-            update = 'disabled'
-        elif option in ('enable', 'on'):
-            channels.remove(channel.id)
-            update = 'enabled'
+    @commands.command(name="sync")
+    @commands.is_owner()
+    async def sync_command(self, ctx: Context, g: int=0) -> None:
+        if g == 1:
+            await self.bot.tree.sync(guild=ctx.guild)
         else:
-            return await ctx.send('Invalid option given.')
-
-        await self.bot.utils.update_one(
-            {'type':'settings'},
-            {'$set':{'disabledChannels':list(set(channels))}}
-        )
-
-        await ctx.tick(True)
-        await ctx.send(f'Commands succesfully **{update}** for `#{channel.name}`!')
-
-    @settings.group(invoke_without_command=True)
-    async def prefix(self, ctx: utils.Context):
-        """Shows all set prefixes."""
-        settings = await self.bot.utils.find_one({'type':'settings'})
-        prefixes = [self.bot.user.mention]
-        prefixes.extend(settings.get('prefixes', ['.']))
-
-        if self.bot.version_info.releaselevel != 'final':
-            prefixes.extend(['b.', 'b!'])
-
-        embed = discord.Embed(
-            title='All Prefixes',
-            description='\n'.join(f'{i}. {p}' for i,p in enumerate(prefixes, 1)),
-            timestamp=utils.utcnow(),
-            colour=ctx.colour
-        )
-
-        embed.set_footer(text=ctx.footer)
-
-        await ctx.reply(embed=embed)
-
-    @prefix.command(name='add')
-    async def _add(self, ctx: utils.Context, *, prefix: str):
-        """Adds a prefix"""
-        settings = await self.bot.utils.find_one({'type':'settings'})
-        prefixes: list[str] = settings.get('prefixes')
-        prefixes.append(prefix)
-        prefixes = list(set(prefixes))
-
-        await self.bot.utils.update_one(
-            {'type':'settings'},
-            {'$set':{'prefixes':prefixes}}
-        )
-
-        await ctx.tick(True)
-
-    @prefix.command()
-    async def remove(self, ctx: utils.Context, *, prefix: str):
-        """Adds a prefix"""
-        settings = await self.bot.utils.find_one({'type':'settings'})
-        prefixes: list[str] = settings.get('prefixes')
-        try:
-            prefixes.remove(prefix)
-        except:
-            pass
-        prefixes = list(set(prefixes))
-
-        await self.bot.utils.update_one(
-            {'type':'settings'},
-            {'$set':{'prefixes':prefixes}}
-        )
-
-        await ctx.tick(True)
-
-    @settings.command(aliases=['mr', 'muted-role'])
-    async def muterole(self, ctx: utils.Context, *, role: Optional[discord.Role]):
-        """Sets or displays the muted role."""
-        settings = await self.bot.utils.find_one({'type':'settings'})
-        
-        if role:
-            await self.bot.utils.update_one({'type':'settings'}, {'$set':{'muteRole':role.id}})
-            await ctx.tick(True)
-        elif role is None:
-            role: discord.Role = ctx.guild.get_role(settings['muteRole'])
-            await ctx.send(f'Role: {role.mention} (ID: {role.id})\nMembers Muted: {len(role.members)}')
-
-    @settings.command()
-    async def log(self, ctx: utils.Context, *, channel: Optional[discord.TextChannel]):
-        """Sets or displays the log channel for the server"""
-        settings = await self.bot.utils.find_one({'type':'settings'})
-        if channel:
-            await self.bot.utils.update_one({'type':'settings'}, {'$set':{'log':channel.id}})
-            await ctx.tick(True)
-        elif channel is None:
-            await ctx.send(f'Current log channel is <#{settings["log"]}>')
-
-    @settings.command()
-    async def ticket(self, ctx: utils.Context, *, channel: Optional[discord.CategoryChannel]):
-        """Sets a category as the ticket category so tickets can be opened there."""
-        settings = await self.bot.utils.find_one({'type':'settings'})
-        if channel:
-            await self.bot.utils.update_one({'type':'settings'}, {'$set':{'ticket':channel.id}}, upsert=True)
-            await ctx.tick(True)
-        elif channel is None:
-            await ctx.send(f'Current Ticket Category is <#{settings.get("ticket")}>')
-
-    @settings.group(aliases=['badwords'], invoke_without_command=True)
-    async def badword(self, ctx: utils.Context):
-        """Shows all bad words set."""
-
-        embed = discord.Embed(
-            title = 'All Bad Words Registered',
-            colour = discord.Colour.blue(),
-            timestamp = utils.utcnow()
-        )
-
-        settings = await self.bot.utils.find_one({'type':'settings'})
-        words: List[str] = settings.get('badWords', [])
-
-        paginator = commands.Paginator(prefix=None, suffix=None, max_size=500)
-        for i, w in enumerate(words, 1):
-            paginator.add_line(f'{i}. {w}')
-
-        interface = PaginatorEmbedInterface(self.bot, paginator, owner=ctx.author, embed=embed)
-        try:
-            await interface.send_to(ctx)
-        except Exception as e:
-            await ctx.send(e)
-
-    @badword.command(name='add')
-    async def add_badword(self, ctx: utils.Context, *, word: str):
-        """Adds a bad word to the database."""
-        settings = await self.bot.utils.find_one({'type':'settings'})
-
-        words: List[str] = settings.get('badWords', [])
-        for w in word.split():
-            words.append(w)
-        words = list(set(words))
-        await self.bot.utils.update_one({'type':'settings'}, {'$set':{'badWords':words}})
-        await ctx.tick(True)
-
-    @badword.command(name='remove')
-    async def remove_badword(self, ctx: utils.Context, *, word: str):
-        """Removes a word from the database."""
-        settings = await self.bot.utils.find_one({'type':'settings'})
-        words: List[str] = settings['badWords']
-        try:
-            words.remove(word)
-            await self.bot.utils.update_one({'type':'settings'}, {'$set':{'badWords':words}})
-        except ValueError:
-            pass
-        finally:
-            await ctx.tick(True)
-
-    @settings.group(name='domain', aliases=['links', 'link'], invoke_without_command=True)
-    async def link(self, ctx: utils.Context):
-        """Shows all links that are whitelisted."""
-
-        embed = discord.Embed(
-            title = 'All Whitelisted links',
-            colour = discord.Colour.blue(),
-            timestamp = utils.utcnow()
-        )
-
-        settings = await self.bot.utils.find_one({'type':'settings'})
-        words: List[str] = settings.get('linkWhitelist', [])
-
-        paginator = commands.Paginator(prefix=None, suffix=None, max_size=500)
-        for i, w in enumerate(words, 1):
-            paginator.add_line(f'{i}. {w}')
-
-        interface = PaginatorEmbedInterface(self.bot, paginator, owner=ctx.author, embed=embed)
-        try:
-            await interface.send_to(ctx)
-        except Exception as e:
-            await ctx.send(e)
-            raise e
-
-    @link.command(name='add')
-    async def add_link(self, ctx: utils.Context, domain: str):
-        """Adds a domain to be whitelisted"""
-
-        settings = await self.bot.utils.find_one({'type':'settings'})
-
-        links: List[str] = settings.get('linkWhitelist', [])
-        links.append(domain)
-        links = list(set(links))
-        await self.bot.utils.update_one({'type':'settings'}, {'$set':{'linkWhitelist':links}})
-        await ctx.tick(True)
-
-    @link.command(name='remove')
-    async def remove_link(self, ctx: utils.Context, domain: str):
-        """Removes a word from the database."""
-        settings = await self.bot.utils.find_one({'type':'settings'})
-        words: List[str] = settings['linkWhitelist']
-        try:
-            words.remove(domain)
-            await self.bot.utils.update_one({'type':'settings'}, {'$set':{'linkWhitelist':words}})
-        except ValueError:
-            pass
-        finally:
-            await ctx.tick(True)
-
+            await self.bot.tree.sync()
+        await ctx.send("👌")
 
     @commands.command()
-    async def status(self, ctx: utils.Context, *, option: str):
-        """Sets the bot's status"""
-        options = ('online', 'dnd', 'idle')
-        if option.casefold() not in options:
-            return await ctx.send('Invalid option provided. Please provide either of the options: '+', '.join(f'`{o}`' for o in options))
+    @commands.is_owner()
+    async def copy(self, ctx: Context) -> None:
+        guild = ctx.guild
+        self.bot.tree.copy_global_to(guild=guild)
+        await ctx.send("👌")
 
-        await self.bot.change_presence(
-            activity=ctx.me.activity,
-            status=discord.Status[option]
+    settings_group = app_commands.Group(name="settings", description="The bot's settings for the current server.")
+
+    @is_admin()
+    @settings_group.command(name="view", description="To view the server settings for the current server.")
+    async def settings_view(self, interaction: discord.Interaction) -> None:
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
+
+        embed = Embed(
+            bot=self.bot,
+            title="Settings",
+            description="Please note that the prefixes work only for some commands."
         )
 
-        await ctx.tick(True)
+        bot_log, msg_log = settings.log_channels.values()
+        admin, bypass = settings.extra_roles.values()
 
-    @commands.group(invoke_without_command=True, aliases=['activities'])
-    async def activity(self, ctx: utils.Context):
-        """Lists the activities of the bot."""
-        activities_dict = await self.bot.utils.find_one({'type':'activities'})
-        activities: list[list[str, str]] = activities_dict['activities']
+        def value(title: str, id: int | None, type: SNOWFLAKE_TYPE = None, sep: str = '-') -> str:
+            string = f"{title} {sep}"
+            if id is None:
+                return f"{string} Not Set"
+            
+            char = ''
+            if type == 'channel':
+                char = '#'
+            elif type == 'role':
+                char = '@&'
+            elif type == 'user':
+                char = '@'
 
-        embed = discord.Embed(
-            title='Status List',
-            colour=ctx.colour,
-            timestamp=utils.utcnow()
+            return f"{string} <{char}{id}>"
+
+        embed.add_field(name="Prefixes", value=f"1. {self.bot.user.mention}\n2. {settings.prefix}")
+        embed.add_field(
+            name="Log Channels",
+            value="\n".join([value('Bot', bot_log, 'channel'), value('Message', msg_log, 'channel')])
         )
+        embed.add_field(
+            name="Extra Roles",
+            value="\n".join(
+                [
+                    value('Admin', admin, 'role'),
+                    value('Bypass', bypass, 'role')
+                ]
+            )
+        )
+        embed.add_field(
+            name="Commands Disabled in",
+            value="\n".join(f"{i}. <#{c}>" for i, c in enumerate(settings.command_disabled_channels, 1)) or "Not Set"
+        )
+        embed.add_field(
+            name="Detection Disabled in",
+            value="\n".join(f"{i}. <#{c}>" for i, c in enumerate(settings.detection_exclusive_channels, 1)) or "Not Set"
+        )
+        embed.add_field(name="Mute Role", value=f'<@&{settings.mute_role}>' if settings.mute_role else "Not Set")
+        embed.add_field(name="Domain Detection", value=str(settings.domain_detection))
+        embed.add_field(name="Bad Word Detection", value=str(settings.bad_word_detection))
+        embed.add_field(name="Use Timeout", value=str(settings.timeout_instead_of_mute))
 
+        await interaction.response.send_message(embed=embed)
 
-        description = ''
-        for i, L in enumerate(activities, 1):
-            if L[0] == 'competing':
-                L[0] = 'competing in'
+    @is_admin()
+    @settings_group.command(name="actions", description="Set various actions.")
+    @app_commands.describe(
+        option='The option to set.',
+        value='The value to set it to.'
+    )
+    async def actions(
+        self,
+        interaction: discord.Interaction,
+        option: Literal['Domain Detection', 'Bad Word Detection', 'Use Timeout Instead of Mute'],
+        value: Literal['True', 'False']
+    ) -> None:
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
 
-            description+=f'{i}. `{L[0].capitalize()} {L[1]}`\n'
-
-        embed.description = description
-
-        await ctx.reply(embed=embed)
-
-
-    @activity.command(name='add')
-    async def add_activity(self, ctx: utils.Context, option: str, *, text: str):
-        """Adds an activity"""
-        option = option.casefold()
-        options = ('playing', 'listening', 'watching', 'competing')
-
-        if option not in options:
-            return await ctx.send('Invalid option provided. Please provide either of the options: '+', '.join(f'`{o}`' for o in options))
-
-        activity_dict = await self.bot.utils.find_one({'type':'activities'})
-        activities: list[list[str, str]] = activity_dict['activities']
-
-        for activity in activities:
-            if activity == [option, text]:
-                return await ctx.send(f'The given activity `{option.capitalize()} {text}` is already registered with me.')
+        if value == 'True':
+            value = True
         else:
-            activities.append([option, text])
-            await self.bot.utils.update_one(
-                {'type':'activities'},
-                {'$set':{'activities':activities}}
-            )
+            value = False
 
-        await ctx.tick(True)
-
-    @activity.command(name='remove')
-    async def remove_activity(self, ctx: utils.Context, option: str, *, text:str):
-        """Removes an activity. The text is case sensitive."""
-        option = option.casefold()
-
-        activity_dict = await self.bot.utils.find_one({'type':'activities'})
-        activities: list[list[str, str]] = activity_dict['activities']
-
-        for a in activities:
-            if a == [option, text]:
-                activities.remove([option, text])
-                d = await self.bot.utils.update_one(
-                    {'type':'activities'},
-                    {'$set':{'activities':activities}}
-                )
-                return await ctx.tick(True)
+        if option == 'Domain Detection':
+            doc_option = 'domainDetection'
+        elif option == 'Bad Word Detection':
+            doc_option = 'badWordDetection'
+        elif option == 'Use Timeout Instead of Mute':
+            doc_option = 'timeoutInsteadOfMute'
         
-        await ctx.reply(f'Could not find the activity `{option.capitalize()} {text}`')
-        await ctx.tick(False)
+        await self.bot.settings.update_one({'_id':settings.id}, {'$set':{doc_option:value}})
 
-    @activity.command(name='set')
-    async def set_activity(self, ctx: utils.Context, option: str, *, text: str):
-        """Sets an activity currently."""
-        option = option.casefold()
-        options = ('playing', 'listening', 'watching', 'competing')
-
-        if option not in options:
-            return await ctx.send('Invalid option provided. Please provide either of the options: '+', '.join(f'`{o}`' for o in options))
-
-        await self.bot.change_presence(
-            status=ctx.me.status,
-            activity=discord.Activity(
-                type=discord.ActivityType[option],
-                name=text
-            )
-        )
-        
-        await ctx.tick(True)
-
-    @activity.command(name='list')
-    async def list_activity(self, ctx: utils.Context):
-        """Lists all activities"""
-        await ctx.invoke(self.activity)
-
-    @tasks.loop(minutes=5.0)
-    async def changing_status(self) -> None:
-        status = random.choice([
-            discord.Status.online,
-            discord.Status.idle,
-            discord.Status.dnd
-        ])
-
-        activity_dict = await self.bot.utils.find_one({'type':'activities'})
-        activities: list[list[str, str]] = activity_dict['activities']
-
-        activity = random.choice(activities)
-
-        await self.bot.change_presence(
-            status=status,
-            activity=discord.Activity(
-                type=discord.ActivityType[activity[0]],
-                name=activity[1]
-            )
+        embed = Embed(
+            bot=self.bot,
+            colour=discord.Colour.green(),
+            title='Success',
+            description=f'**{option}** successfully set to `{value}`.'
         )
 
-    @changing_status.before_loop
-    async def before_change(self) -> None:
-        await self.bot.wait_until_ready()
+        await interaction.response.send_message(embed=embed)
 
-    @commands.command(name='loop', hidden=True)
-    async def loop_run_cancel(self, ctx: utils.Context, *, option:Optional[Literal['start', 'stop']]):
-        """Starts or stops the status loop."""
-        is_running = self.changing_status.is_running()
-        if option is None:
-            return await ctx.reply(f'The status loop is currently {"running" if is_running else "not running"}')
+    @is_admin()
+    @settings_group.command(name='set-log-channels', description='Sets the log channels.')
+    @app_commands.describe(type='Bot - Bot Actions | Message - Message Logs', channel='The channel to be set as log channel.')
+    async def log_channel(
+        self,
+        interaction: discord.Interaction,
+        type: Literal['Bot', 'Message'],
+        channel: discord.TextChannel
+    ) -> None:
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
 
-        if option == 'start':
-            if is_running:
-                return await ctx.reply('The task is already running.')
+        document = {
+            'bot':settings.log_channels['bot'],
+            'message':settings.log_channels['message']
+        }
+
+        document[type.lower()] = channel.id
+
+        await self.bot.settings.update_one({'_id':settings.id}, {'$set':{'logChannels':document}})
+
+        embed = Embed(
+            bot=self.bot,
+            title='Success',
+            colour=discord.Colour.green(),
+            description=f'Successfully set **{type} Log Channel** to {channel.mention}.'
+        )
+        await interaction.response.send_message(embed=embed)
+
+    @is_admin()
+    @settings_group.command(name='set-extra-roles', description='Sets the extra roles for the server.')
+    @app_commands.describe(type='Which extra role is being set', role='The role to be set.')
+    async def extra_roles(
+        self,
+        interaction: discord.Interaction,
+        type: Literal['Admin', 'Bypass'],
+        role: discord.Role
+    ) -> None:
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
+
+        document = {
+            'admin':settings.extra_roles['admin'],
+            'bypass':settings.extra_roles['bypass']
+        }
+
+        document[type.lower()] = role.id
+
+        await self.bot.settings.update_one({'_id':settings.id}, {'$set':{'extraRoles':document}})
+
+        embed = Embed(
+            bot=self.bot,
+            title='Success',
+            colour=discord.Colour.green(),
+            description=f'Successfully set **{type} Role** to {role.mention}.'
+        )
+
+        await interaction.response.send_message(embed=embed)
+
+    @is_admin()
+    @settings_group.command(name='command-channel', description='Enables or Disables the command in the current channel.')
+    @app_commands.describe(option='Toggle to enable/disable commands in the current channel.')
+    async def command_channel(self, interaction: discord.Interaction, option: Literal['Enable', 'Disable']) -> None:
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
+
+        value = True if option == 'Enable' else False
+        option = 'enabled' if value else 'disabled'
+        channel = interaction.channel_id
+
+        if not value:
+            if channel in settings.command_disabled_channels:
+                pass
             else:
-                self.changing_status.start()
-                await ctx.tick(True)
-        elif option == 'stop':
-            if is_running:
-                self.changing_status.cancel()
-                await ctx.tick(True)
-            else:
-                return await ctx.reply('The task is already stopped.')
-
-    @loop_run_cancel.error
-    async def error_on_loop(self, ctx: utils.Context, error: commands.CommandError):
-        error = getattr(error, 'original', error)
-        if isinstance(error, commands.BadLiteralArgument):
-            return await ctx.send('Invalid option provided. Valid options are: `start`, `stop`.')
+                settings.command_disabled_channels.append(channel)
         else:
-            raise error
+            if channel in settings.command_disabled_channels:
+                settings.command_disabled_channels.remove(channel)
+        
+        await self.bot.settings.update_one({'_id':settings.id}, {'$set':{'commandDisabledChannels':settings.command_disabled_channels}})
+
+        embed = Embed(
+            bot=self.bot,
+            title='Success',
+            colour=discord.Colour.green(),
+            description=f'Successfully **{option}** commands in {interaction.channel.mention}.'
+        )
+
+        await interaction.response.send_message(embed=embed)
+
+    @is_admin()
+    @settings_group.command(name='detection', description="Disabled detection of links or bad words in the current channel.")
+    @app_commands.describe(option='Toggle to enable/disable detection in the current channel.')
+    async def detection(
+        self,
+        interaction: discord.Interaction,
+        option: Literal['Enable', 'Disable'],
+        channel: Optional[Union[discord.TextChannel, discord.CategoryChannel]]
+    ) -> None:
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
+
+        value = True if option == 'Enable' else False
+        option = 'enabled' if value else 'disabled'
+        channel = channel or interaction.channel
+
+        if not value:
+            if channel.id in settings.detection_exclusive_channels:
+                pass
+            else:
+                settings.detection_exclusive_channels.append(channel.id)
+        else:
+            if channel.id in settings.detection_exclusive_channels:
+                settings.detection_exclusive_channels.remove(channel.id)
+
+        await self.bot.settings.update_one({'_id':settings.id}, {'$set':{'detectionExclusiveChannels':settings.detection_exclusive_channels}})
+
+        embed = Embed(
+            bot=self.bot,
+            title='Success',
+            colour=discord.Colour.green(),
+            description=f'Successfully **{option}** detecion in {channel.mention}.'
+        )
+
+        await interaction.response.send_message(embed=embed)
+
+    @is_admin()
+    @settings_group.command(name="mute-role", description="Set a mute role for the server.")
+    @app_commands.describe(role="The role to set as mute role.")
+    async def mute_role(self, interaction: discord.Interaction, role: discord.Role) -> None:
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
+
+        await self.bot.settings.update_one({'_id':settings.id}, {'$set':{'muteRole':role.id}})
+
+        embed = Embed(
+            bot=self.bot,
+            title="Success",
+            colour=discord.Colour.green(),
+            description=f"Mute role successfully set to {role.mention}."
+        )
+
+        await interaction.response.send_message(embed=embed)
+
+    @is_admin()
+    @settings_group.command(name="prefix", description="Changes the prefix of the bot for the server.")
+    @app_commands.describe(prefix="The prefix to be set.")
+    async def set_prefix(self, interaction: discord.Interaction, prefix: str) -> None:
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
+
+        await self.bot.settings.update_one({'_id':settings.id}, {'$set':{'prefix':prefix}})
+
+        embed = Embed(
+            bot=self.bot,
+            title="Success",
+            colour=discord.Colour.green(),
+            description=f"Server prefix successfully set to `{prefix}`."
+        )
+
+        await interaction.response.send_message(embed=embed)
+
+    domain_whitelist = app_commands.Group(
+        name="domain-whitelist",
+        description="Works with the domains whitelisted for the server.",
+        parent=settings_group
+    )
+
+    @is_admin()
+    @domain_whitelist.command(name="view", description="Shows the domain whitelisted.")
+    async def whitelist_view(self, interaction: discord.Interaction) -> None:
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
+
+        if settings.domains_whitelisted:
+            embed = Embed(
+                bot=self.bot,
+                title="Domains Whitelisted"
+            )
+            pages = SimplePages(settings.domains_whitelisted, interaction=interaction, bot=self.bot, embed=embed)
+            await pages.start()
+        else:
+            await interaction.response.send_message("No domains have been whitelisted.")
+
+    @is_admin()
+    @domain_whitelist.command(name="add", description="Adds a domain to the server whitelist.")
+    @app_commands.describe(domain="The domain to be added to the whitelist.")
+    async def whitelist_add(self, interaction: discord.Interaction, domain: str) -> None:
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
+
+        if domain in settings.domains_whitelisted:
+            return await interaction.response.send_message(f"Domain: `{domain}` is already whitelisted.")
+
+        else:
+            settings.domains_whitelisted.append(domain)
+            await self.bot.settings.update_one(
+                {'_id':settings.id},
+                {'$set':{'domainsWhitelisted':settings.domains_whitelisted}}
+            )
+
+            embed = Embed(
+                bot=self.bot,
+                colour=discord.Colour.green(),
+                title="Success",
+                description=f"Successfully whitelisted `{domain}`."
+            )
+
+            await interaction.response.send_message(embed=embed)
+
+    @is_admin()
+    @domain_whitelist.command(name="remove", description="Removes a domain from the server whitelist.")
+    @app_commands.describe(domain="The domain to be removed from the server whitelist.")
+    async def whitelist_remove(self, interaction: discord.Interaction, domain: str) -> None:
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
+
+        if domain in settings.domains_whitelisted:
+            settings.domains_whitelisted.remove(domain)
+
+            await self.bot.settings.update_one(
+                {'_id':settings.id},
+                {'$set':{'domainsWhitelisted':settings.domains_whitelisted}}
+            )
+
+            embed = Embed(
+                bot=self.bot,
+                colour=discord.Colour.green(),
+                title="Success",
+                description=f"Successfully removed the whitelisted domain: `{domain}`."
+            )
+
+            await interaction.response.send_message(embed=embed)
+
+        else:
+            await interaction.response.send(f"Domain `{domain}` could not be removed since it was not whitelisted.")
+
+    bad_word = app_commands.Group(
+        name="bad-words",
+        description="Handles server bad words",
+        parent=settings_group
+    )
+
+    @is_admin()
+    @bad_word.command(name="view", description="Shows the bad words in the server.")
+    async def bad_word_view(self, interaction: discord.Interaction) -> None:
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
+
+        if settings.bad_words:
+            embed = Embed(
+                bot=self.bot,
+                title="Bad Words Registered"
+            )
+            pages = SimplePages(settings.bad_words, interaction=interaction, bot=self.bot, embed=embed)
+            await pages.start()
+        else:
+            await interaction.response.send_message("No bad words have been registered.")
+
+    @is_admin()
+    @bad_word.command(name="add", description="Registers a new bad word.")
+    @app_commands.describe(word="The bad word to add.")
+    async def bad_word_add(self, interaction: discord.Interaction, word: str) -> None:
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
+
+        if word in settings.bad_words:
+            return await interaction.response.send_message(f"Word: `{word}` is already registered.")
+
+        else:
+            settings.bad_words.append(word)
+            await self.bot.settings.update_one(
+                {'_id':settings.id},
+                {'$set':{'badWords':settings.bad_words}}
+            )
+
+            embed = Embed(
+                bot=self.bot,
+                colour=discord.Colour.green(),
+                title="Success",
+                description=f"Successfully registered `{word}`."
+            )
+
+            await interaction.response.send_message(embed=embed)
     
+    @is_admin()
+    @bad_word.command(name="remove", description="Removes a bad word from the registered set of words.")
+    @app_commands.describe(word="The word to be removed.")
+    async def bad_word_remove(self, interaction: discord.Interaction, word: str) -> None:
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
 
+        if word in settings.bad_words:
+            settings.bad_words.remove(word)
 
-def setup(bot: utils.Bot):
-    bot.add_cog(Settings(bot))
+            await self.bot.settings.update_one(
+                {'_id':settings.id},
+                {'$set':{'badWords':settings.bad_words}}
+            )
+
+            embed = Embed(
+                bot=self.bot,
+                colour=discord.Colour.green(),
+                title="Success",
+                description=f"Successfully removed the bad word: `{word}`."
+            )
+
+            await interaction.response.send_message(embed=embed)
+
+        else:
+            await interaction.response.send(f"Word `{word}` could not be removed since it was not registered.")
+
+    
+async def setup(bot: Bot) -> None:
+    await bot.add_cog(Settings(bot))
