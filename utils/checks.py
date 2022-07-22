@@ -45,11 +45,11 @@ async def check_perms(
 
 def has_permissions(*, check=all, **perms: bool):
     async def pred(action: Union[discord.Interaction, Context]):
-        check = (
+        pre = (
             await check_perms(action, perms, check=check) or
             await has_setting_role(action, 'admin')
         )
-        if check is False:
+        if pre is False:
             permissions = action.permissions
             missing = [perm for perm, value in perms.items() if getattr(permissions, perm) != value]
             if isinstance(action, discord.Interaction):
