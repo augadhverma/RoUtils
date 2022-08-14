@@ -44,7 +44,7 @@ async def check_perms(
 
     resolved = ctx.channel.permissions_for(ctx.author)
     return check(getattr(resolved, name, None) == value for name, value in perms.items())
-
+    
 async def has_setting_role(action: Union[discord.Interaction, Context], role: ROLE) -> bool:
     ctx = await get_context(action)
     pre = await check_perms(action, {'administrator':True})
@@ -150,3 +150,4 @@ def can_close_threads():
         )
 
     return commands.check(predicate)
+
