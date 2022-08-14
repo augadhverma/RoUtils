@@ -22,7 +22,7 @@ import re
 
 from discord.ext import commands
 from discord import app_commands
-from utils import EmbedPages, Embed, Context, has_permissions, has_setting_role
+from utils import EmbedPages, Embed, Context, has_permissions, has_setting_role, is_mod
 
 from typing import Any, Callable, Literal, Union, Optional, TypedDict
 from collections import Counter
@@ -82,20 +82,16 @@ class Moderation(commands.Cog):
     def __init__(self, bot: Bot) -> None:
         self.bot = bot
 
-    async def on_infraction(
+    async def post_infraction_log(
         self,
-        action: Union[discord.Interaction, Context],
-        offender: Union[discord.User, discord.Member],
+        ctx: Context,
+        offender: Union[discord.Member, discord.User],
         infraction: Infraction
     ):
-        if isinstance(action, discord.Interaction):
-            ctx = await self.bot.get_context(action, cls=Context)
-        else:
-            ctx = action
         try:
             await ctx.send(embed=infraction.embed('channel'))
-        except discord.InteractionResponded:
-            await ctx.send(embed=infraction.embed('channel'))
+        except:
+            pass
 
         log = await self.bot.post_log(ctx.guild, 'bot', embed=infraction.embed('log'))
         
@@ -106,90 +102,53 @@ class Moderation(commands.Cog):
 
         if not isinstance(offender, discord.Member):
             return
+        
+        return log
 
-        # Checks only infracions that are not deleted from the user's profile.
+
+    async def on_infraction(
+        self,
+        action: Union[discord.Interaction, Context],
+        offender: Union[discord.Member, discord.User],
+        infraction: Infraction
+    ):
+        if isinstance(action, discord.Interaction):
+            ctx = await self.bot.get_context(action, cls=Context)
+        else:
+            ctx = action
+
+        log = await self.post_infraction_log(ctx, offender, infraction)
+
         count = 0
-        async for inf in self.bot.infractions.find({'guild_id':ctx.guild.id, 'offender':offender.id}):
-            inf = Infraction(inf)
+        async for document in self.bot.infractions.find({'guild_id':ctx.guild.id, 'offender':offender.id}):
+            inf = Infraction(document)
             if not inf.deleted:
                 count += 1
-
-        #count >= 5 → Kick
-        #count >=3 → Automute/Autotimeout
-
-        if count >= 5:
-            reason = f"Autokick from {ctx.guild.name} (Reached {count} infractions)."
-            new = await self.bot.insert_infraction(
-                offender.id,
-                self.bot.user.id,
-                reason,
-                InfractionType.kick,
-                get_until(days=30),
-                ctx.guild.id
-            )
-
-            try:
-                await self.on_infraction(action, offender, new)
-                await offender.kick(reason=reason)
-                
-            except Exception as e:
-                if log:
-                    await log.reply(f"Could not kick the user\nError that occured: `{e}`")
-                pass
-            finally:
-                return
-
-        elif count >= 3:
+        
+        if count >= 3:
             settings = await self.bot.get_guild_settings(ctx.guild.id)
+
             if settings.timeout_instead_of_mute:
-                reason = f"Auto-timeout in {ctx.guild.name} (Reached {count} infractions)."
-                
+                reason = f"Auto-timeout in {ctx.guild.name} (Reached {count} active infractions)"
+
                 try:
                     await offender.timeout(datetime.timedelta(hours=3), reason=reason)
                 except Exception as e:
                     if log:
-                        await log.reply(f"Could not kick the user\nError that occured: `{e}`")
-                    pass
-
-                new = await self.bot.insert_infraction(
-                    offender.id,
-                    self.bot.user.id,
-                    reason,
-                    InfractionType.autotimeout,
-                    get_until(hours=3),
-                    ctx.guild.id
-                )
-                await self.on_infraction(action, offender, new)
-                return
-                
-            else:
-                if settings.mute_role:
-                    role = action.guild.get_role(settings.mute_role)
-                    if role is None:
-                        pass
-                    else:
-                        try:
-                            await offender.add_roles(role, reason=reason)
-                        except Exception as e:
-                            if log:
-                                await log.reply(f"Could not kick the user\nError that occured: `{e}`")
-                            pass
-                    
-                        new = await self.bot.insert_infraction(
-                                offender.id,
-                                self.bot.user.id,
-                                reason,
-                                InfractionType.autotimeout,
-                                get_until(hours=3),
-                                ctx.guild.id
-                            )
-
-                        await self.on_infraction(action, offender, new)
-                        return
+                        await log.reply(f"Could not perform `autotimeout` (Error: {e})")
                 else:
-                    pass
+                    new = await self.bot.insert_infraction(
+                        offender.id,
+                        self.bot.user.id,
+                        reason,
+                        InfractionType.autotimeout,
+                        get_until(hours=3),
+                        ctx.guild.id
+                    )
+                    
+                    await self.post_infraction_log(ctx, offender, new)
 
-    @has_permissions(moderate_members=True)
+    @is_mod()
     @app_commands.command(name="info", description="Shows information about an infraction.")
     @app_commands.describe(id="The id of the infraction.", show_deleted=SHOW_DELETED_DESCRIPTION)
     async def info(self, interaction: discord.Interaction, id: int, show_deleted: Optional[SHOW_DELETED]) -> None:
@@ -201,7 +160,7 @@ class Moderation(commands.Cog):
                 return await interaction.response.send_message(f"The infraction #{id} does not exist.")
             return await interaction.response.send_message(embed=infraction.embed('log'))
 
-    @has_permissions(moderate_members=True)
+    @is_mod()
     @app_commands.command(name="warn", description="Warns a user")
     @app_commands.describe(user="The user to warn.", reason=REASON)
     async def warn(self, interaction: discord.Interaction, user: discord.Member, reason: str) -> None:
@@ -219,7 +178,7 @@ class Moderation(commands.Cog):
 
         await self.on_infraction(interaction, user, infraction)
 
-    @has_permissions(kick_members=True)
+    @is_mod(senior=True)
     @app_commands.command(name="kick", description="Kicks a user from the server.")
     @app_commands.describe(user="The user to kick.", reason=REASON)
     async def kick(
@@ -247,7 +206,7 @@ class Moderation(commands.Cog):
         except discord.HTTPException:
             await interaction.followup.send("An unknown error occured.")
 
-    @has_permissions(ban_members=True)
+    @is_mod(senior=True)
     @app_commands.command(name="ban", description="Bans a user from the server.")
     @app_commands.describe(user="The user to ban.", reason=REASON)
     async def ban(
@@ -285,7 +244,7 @@ class Moderation(commands.Cog):
         except discord.HTTPException:
             await interaction.followup.send("An unknown error occured.")
 
-    @has_permissions(ban_members=True)
+    @is_mod(senior=True)
     @app_commands.command(name="unban", description="Unbans a user from the server.")
     @app_commands.describe(user="The user to unban.", reason="The reason for unban.")
     async def unban(
@@ -310,7 +269,7 @@ class Moderation(commands.Cog):
 
         await self.on_infraction(interaction, user, infraction)
 
-    @has_permissions(moderate_members=True)
+    @is_mod()
     @app_commands.command(name="removewarn", description="Removes an infraction.")
     @app_commands.describe(id="The id of the removal.")
     async def removewarn(self, interaction: discord.Interaction, id: int) -> None:
@@ -322,7 +281,7 @@ class Moderation(commands.Cog):
         
         await interaction.response.send_message(f"Successfully removed the infraction #{id}", embed=infraction.embed("log"))
 
-    @has_permissions(moderate_members=True)
+    @is_mod()
     @app_commands.command(name="reason", description="Changes the reason for an infraction.")
     @app_commands.describe(id="The id of the infraction.", reason="The new reason.")
     async def new_reason(
@@ -343,7 +302,7 @@ class Moderation(commands.Cog):
         )
         await interaction.response.send_message(embed=embed)
 
-    @has_permissions(manage_messages=True)
+    @is_mod()
     @app_commands.command(name="slowmode", description="Changes the slowmode of channels.")
     @app_commands.describe(
         channel="The channel who's slowmode needs to be updated or viewed.",
@@ -429,37 +388,37 @@ class Moderation(commands.Cog):
         else:
             await interaction.response.send_message(to_send, ephemeral=True)
 
-    @has_permissions(manage_messages=True)
+    @is_mod()
     @purge.command(name="all", description="Removes all messages.")
     @app_commands.describe(search=SEARCH)
     async def purge_all(self, interaction: discord.Interaction, search: int = 100) -> None:
         await self.do_removal(interaction, search, lambda e: True)
 
-    @has_permissions(manage_messages=True)
+    @is_mod()
     @purge.command(name="embeds", description="Removes messages that have embeds in them.")
     @app_commands.describe(search=SEARCH)
     async def embeds(self, interaction: discord.Interaction, search: int = 100) -> None:
         await self.do_removal(interaction, search, lambda e: len(e.embeds))
 
-    @has_permissions(manage_messages=True)
+    @is_mod()
     @purge.command(name="files", description="Removes messages that have attachments in them.")
     @app_commands.describe(search=SEARCH)
     async def files(self, interaction: discord.Interaction, search: int = 100) -> None:
         await self.do_removal(interaction, search, lambda e: len(e.attachments))
     
-    @has_permissions(manage_messages=True)
+    @is_mod()
     @purge.command(name="images", description="Removes messages that have embeds or attachments.")
     @app_commands.describe(search=SEARCH)
     async def images(self, interaction: discord.Interaction, search: int = 100) -> None:
         await self.do_removal(interaction, search, lambda e: len(e.attachments) or len(e.embeds))
 
-    @has_permissions(manage_messages=True)
+    @is_mod()
     @purge.command(name="user", description="Removes all messages by a member.")
     @app_commands.describe(search=SEARCH, member="The member whose messages have to be purged.")
     async def user(self, interaction: discord.Interaction, member: discord.Member, search: int = 100) -> None:
         await self.do_removal(interaction, search, lambda e: e.author == member)
 
-    @has_permissions(moderate_members=True)
+    @is_mod()
     @app_commands.command(name="warns", description="Shows warns received by/given to a user.")
     @app_commands.describe(option="The option to show.", user="The user whose warns are being shown.", show_deleted=SHOW_DELETED_DESCRIPTION)
     async def warns(
@@ -507,7 +466,13 @@ class Moderation(commands.Cog):
         if (await has_setting_role(ctx, 'bypass')):
             return
 
+        roles = [r.id for r in ctx.author.roles]
+
         settings = await self.bot.get_guild_settings(message.guild.id)
+
+        mod_roles = settings.mod_roles.values()
+        if (any(x in mod_roles for x in roles)):
+            return
 
         if settings.bad_word_detection:
             for word in settings.bad_words:
@@ -542,16 +507,17 @@ class Moderation(commands.Cog):
                     except discord.NotFound:
                         return
                 
-                infraction = await self.bot.insert_infraction(
-                    message.author.id,
-                    self.bot.user.id,
-                    f"Using a blacklisted link (||{L[0]}||)",
-                    InfractionType.autowarn,
-                    get_until(days=1),
-                    message.guild.id
-                )
-                
-                await self.on_infraction(ctx, message.author, infraction)
+                    else:
+                        infraction = await self.bot.insert_infraction(
+                            message.author.id,
+                            self.bot.user.id,
+                            f"Using a blacklisted link (||{L[0]}||)",
+                            InfractionType.autowarn,
+                            get_until(days=1),
+                            message.guild.id
+                            )
+                    
+                        await self.on_infraction(ctx, message.author, infraction)
 
             invite_regex = re.compile('(?:https?://)?discord(?:app)?\.(?:com/invite|gg)/[a-zA-Z0-9]+/?', re.IGNORECASE)
 

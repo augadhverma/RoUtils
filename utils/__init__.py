@@ -12,9 +12,10 @@ from .models import (
     InfractionType,
     request,
     HTTPException,
-    format_dt
+    format_dt,
+    CustomEmbeds
 )
 from .paginator import SimplePages, TextPageSource, FieldPageSource, SimplePageSource, EmbedPages, TextPages
-from .checks import check_perms, is_admin, is_bot_channel, can_bypass, has_setting_role, has_permissions
+from .checks import check_perms, is_admin, is_bot_channel, can_bypass, has_setting_role, has_permissions, is_mod, can_close_threads
 from .errors import ReasonError, CannotUseBotCommand, TagNotFound
 from .roblox import User, RoWifiUser, Member, Role
