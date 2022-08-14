@@ -16,12 +16,13 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+from datetime import datetime
 import discord
 
-from typing import Literal, Optional, Union
+from typing import Any, Literal, Optional, Union
 from discord.ext import commands, tasks
 from discord import app_commands
-from utils import Bot, Context, Embed, SimplePages, is_admin
+from utils import Bot, Context, Embed, SimplePages, is_admin, CustomEmbeds, can_close_threads
 
 SNOWFLAKE_TYPE = Literal['role', 'user', 'channel']
 
@@ -61,6 +62,7 @@ class Settings(commands.Cog):
 
         bot_log, msg_log = settings.log_channels.values()
         admin, bypass = settings.extra_roles.values()
+        mod, senior = settings.mod_roles.values()
 
         def value(title: str, id: int | None, type: SNOWFLAKE_TYPE = None, sep: str = '-') -> str:
             string = f"{title} {sep}"
@@ -87,7 +89,9 @@ class Settings(commands.Cog):
             value="\n".join(
                 [
                     value('Admin', admin, 'role'),
-                    value('Bypass', bypass, 'role')
+                    value('Bypass', bypass, 'role'),
+                    value('Mod', mod, 'role'),
+                    value('Senior Mod', senior, 'role')
                 ]
             )
         )
@@ -199,6 +203,36 @@ class Settings(commands.Cog):
         )
 
         await interaction.response.send_message(embed=embed)
+
+    @is_admin()
+    @settings_group.command(name='set-mod-roles', description='Sets the mod roles for the server.')
+    @app_commands.describe(type='Which role to set.', role='The role to set')
+    async def mod_roles(
+        self,
+        interaction: discord.Interaction,
+        type: Literal['Mod', 'Senior Mod'],
+        role: discord.Role
+    ) -> None:
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
+
+        document = {
+            'mod': settings.mod_roles['mod'],
+            'senior mod': settings.mod_roles['senior mod']
+        }
+
+        document[type.lower()] = role.id
+
+        await self.bot.settings.update_one({'_id':settings.id}, {'$set':{'modRoles':document}})
+
+        embed = Embed(
+            bot=self.bot,
+            title='Success',
+            colour=discord.Colour.green(),
+            description=f'Successfully set **{type} Role** to {role.mention}.'
+        )
+
+        await interaction.response.send_message(embed=embed)
+
 
     @is_admin()
     @settings_group.command(name='command-channel', description='Enables or Disables the command in the current channel.')
@@ -443,6 +477,99 @@ class Settings(commands.Cog):
         else:
             await interaction.response.send(f"Word `{word}` could not be removed since it was not registered.")
 
-    
+    embed = app_commands.Group(name="embed", description="To edit and add normal embeds.")
+
+    async def get_id(self, guild_id: int) -> int:
+        return await self.bot.embeds.count_documents({'guild_id':guild_id}) + 1
+
+    async def insert_embed_data(self, data: dict, guild_id: int) -> CustomEmbeds:
+        document = {
+            'id':await self.get_id(guild_id),
+            'embedData': data
+        }
+
+        insert = await self.bot.embeds.insert_one(document)
+
+        document['_id'] = insert.inserted_id
+
+        return CustomEmbeds(document)
+
+    async def get_embed(self, id: int, guild_id: int) -> CustomEmbeds | None:
+        document = await self.bot.embeds.find_one({'id':id, 'guild_int':guild_id})
+
+        if document:
+            return CustomEmbeds(document)
+        return None
+
+    @is_admin()
+    @embed.command(name="create", description="Creates an embed.")
+    @app_commands.describe(
+        title="The title of the embed.",
+        description="The description of the embed.",
+        footer="The footer of the embed.",
+        colour="The colour of the embed. (Provide a HEX colour, eg: #ffffff)",
+        url="The url attached to the title of the title.",
+        image="The image to be set on the embed.",
+        thumbnail="The thumbnail to be set on the embed.",
+        timestamp="The timestamp to be set. Enter 'default' to set the current time."
+    )
+    async def embed_create(
+        self,
+        interaction: discord.Interaction,
+        title: Optional[str],
+        description: Optional[str],
+        footer: Optional[str],
+        colour: Optional[str],
+        url: Optional[str],
+        image: Optional[str],
+        thumbnail: Optional[str],
+        timestamp: Optional[str]
+    ) -> None:
+
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            url=url
+        )
+
+        if colour:
+            try:
+                colour = discord.Colour.from_str(colour)
+            except ValueError:
+                return await interaction.response.send_message("Please provide a valid hex colour, example: `#ffffff`", ephemeral=True)
+            else:
+                embed.colour = colour
+
+        if timestamp.casefold() == 'default':
+            embed.timestamp = discord.utils.utcnow()
+        elif timestamp:
+            try:
+                embed.timestamp = datetime.utcfromtimestamp(int(timestamp.split('.')))
+            except:
+                pass
+
+        if footer:
+            embed.set_footer(text=footer)
+        
+        if image:
+            embed.set_image(url=image)
+        
+        if thumbnail:
+            embed.set_thumbnail(url=thumbnail)
+
+        new_embed = await self.insert_embed_data(embed.to_dict(), interaction.guild_id)
+
+        await interaction.response.send_message(f"Successfully created the tag with id `{new_embed.id}`.")
+
+    @commands.hybrid_command(name="solved", description="Marks a thread as solved.")
+    @can_close_threads()
+    async def solved(self, ctx: Context) -> None:
+        assert isinstance(ctx.channel, discord.Thread)
+        try:
+            await ctx.message.add_reaction("<:greentick:707962970109509642>")
+        except:
+            pass
+        await ctx.channel.edit(locked=True, archived=True, reason=f'Marked as solved by {ctx.author} (ID: {ctx.author.id})')
+
 async def setup(bot: Bot) -> None:
     await bot.add_cog(Settings(bot))

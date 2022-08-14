@@ -434,6 +434,7 @@ class GuildSettings:
         self.prefix: str = document['prefix']
         self.log_channels: dict[str, int | None] = document['logChannels']
         self.extra_roles: dict[str, int | None] = document['extraRoles']
+        self.mod_roles: dict[str, int | None] = document['modRoles']
         self.command_disabled_channels: list[int] = document['commandDisabledChannels']
         self.bad_words: list[str] = document['badWords']
         self.domains_whitelisted: list[str] = document['domainsWhitelisted']
@@ -443,3 +444,11 @@ class GuildSettings:
         self.bad_word_detection: bool = document['badWordDetection']
         self.timeout_instead_of_mute: bool = document['timeoutInsteadOfMute']
         self.tickets_channel: int | None = document.get('ticketsChannel')
+
+class CustomEmbeds:
+    def __init__(self, document: dict) -> None:
+        self._document = document
+        self._id: ObjectId = ObjectId(document['_id'])
+        self.id: int = document['id']
+        self.embed_data: dict = document['embedData']
+        self.embed: discord.Embed = discord.Embed().from_dict(self.embed_data)

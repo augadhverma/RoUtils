@@ -24,8 +24,9 @@ import discord
 import dotenv
 import random
 import logging
+import sys
 
-from typing import Literal, Optional, Union
+from typing import Literal, Optional, Union, Any
 from discord.ext import commands
 
 from .db import Client
@@ -41,9 +42,30 @@ os.environ["JISHAKU_NO_UNDERSCORE"] = "True"
 os.environ["JISHAKU_NO_DM_TRACEBACK"] = "True" 
 os.environ["JISHAKU_HIDE"] = "True"
 
+# log formatter taken straight from discord module
+
+def stream_supports_colour(stream: Any) -> bool:
+    is_a_tty = hasattr(stream, 'isatty') and stream.isatty()
+    if sys.platform != 'win32':
+        return is_a_tty
+
+    # ANSICON checks for things like ConEmu
+    # WT_SESSION checks if this is Windows Terminal
+    # VSCode built-in terminal supports colour too
+    return is_a_tty and ('ANSICON' in os.environ or 'WT_SESSION' in os.environ or os.environ.get('TERM_PROGRAM') == 'vscode')
+
+
 logger = logging.getLogger(__name__)
 log_handler = logging.StreamHandler()
-log_handler.setFormatter(discord.client._ColourFormatter())
+
+if stream_supports_colour(log_handler.stream):
+    log_formatter = discord.client._ColourFormatter()
+else:
+    dt_fmt = '%Y-%m-%d %H:%M:%S'
+    log_formatter = logging.Formatter('[{asctime}] [{levelname:<8}] {name}: {message}', dt_fmt, style='{')
+
+log_handler.setFormatter(log_formatter)
+
 logger.setLevel(logging.DEBUG)
 logger.addHandler(log_handler)
 
@@ -119,9 +141,8 @@ class Bot(commands.Bot):
             self.infractions = Client(URI, db, 'Infractions')
         if not hasattr(self, 'settings'):
             self.settings = Client(URI, db, 'Settings')
-        #For Future
-        # if not hasattr(self, 'extras'):
-        #     self.extras = Client(URI, db, 'Extras')
+        if not hasattr(self, 'embeds'):
+            self.embeds = Client(URI, db, 'Embeds')
         temp = [
             ("playing", "with ItsArtemiz"),
             ("playing", "with RoWifi"),
@@ -147,6 +168,7 @@ class Bot(commands.Bot):
             'prefix':'.',
             'logChannels':{'bot':None, 'message':None},
             'extraRoles':{'admin':None, 'bypass':None},
+            'modRoles':{'mod': None, 'senior mod':None},
             'commandDisabledChannels':[],
             'badWords':[],
             'domainsWhitelisted':[],
