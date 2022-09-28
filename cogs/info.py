@@ -299,7 +299,7 @@ class Information(commands.Cog):
             if message.embeds and message.author.id == 508391840525975553:
                 embed = message.embeds[0]
                 ticket_id = embed.fields[0].value
-                claimed_by = embed.fields[-1].value
+                claimed_by = embed.fields[-2].value
 
                 try:
                     transcript = message.components[0].children[0].url
