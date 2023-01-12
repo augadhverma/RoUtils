@@ -22,7 +22,7 @@ import re
 
 from discord.ext import commands
 from discord import app_commands
-from utils import EmbedPages, Embed, Context, has_permissions, has_setting_role, is_mod
+from utils import EmbedPages, Embed, Context, has_setting_role, is_mod, Cache
 
 from typing import Any, Callable, Literal, Union, Optional, TypedDict
 from collections import Counter
@@ -81,6 +81,7 @@ class InfractionPages(EmbedPages):
 class Moderation(commands.Cog):
     def __init__(self, bot: Bot) -> None:
         self.bot = bot
+        self.last_auto_timeout_user_id = Cache(seconds=60)
 
     async def post_infraction_log(
         self,
@@ -93,7 +94,7 @@ class Moderation(commands.Cog):
         except:
             pass
 
-        log = await self.bot.post_log(ctx.guild, 'bot', embed=infraction.embed('log'))
+        log = await self.bot.post_log(ctx.guild, 'infractions', embed=infraction.embed('log'))
         
         try:
             await offender.send(f"Sent from {ctx.guild.name}", embed=infraction.embed('offender'))
@@ -124,13 +125,15 @@ class Moderation(commands.Cog):
             inf = Infraction(document)
             if not inf.deleted:
                 count += 1
-        
+
         if count >= 3:
+            if self.last_auto_timeout_user_id.get(ctx.guild.id) == offender.id:
+                return
+            
             settings = await self.bot.get_guild_settings(ctx.guild.id)
 
             if settings.timeout_instead_of_mute:
                 reason = f"Auto-timeout in {ctx.guild.name} (Reached {count} active infractions)"
-
                 try:
                     await offender.timeout(datetime.timedelta(hours=3), reason=reason)
                 except Exception as e:
@@ -469,6 +472,9 @@ class Moderation(commands.Cog):
         roles = [r.id for r in ctx.author.roles]
 
         settings = await self.bot.get_guild_settings(message.guild.id)
+
+        if message.channel.id in settings.detection_exclusive_channels:
+            return
 
         mod_roles = settings.mod_roles.values()
         if (any(x in mod_roles for x in roles)):
