@@ -473,7 +473,7 @@ class Moderation(commands.Cog):
 
         settings = await self.bot.get_guild_settings(message.guild.id)
 
-        if message.channel.id in settings.detection_exclusive_channels:
+        if message.channel.category_id in settings.detection_exclusive_channels:
             return
 
         mod_roles = settings.mod_roles.values()
