@@ -60,7 +60,7 @@ class Settings(commands.Cog):
             description="Please note that the prefixes work only for some commands."
         )
 
-        bot_log, msg_log = settings.log_channels.values()
+        bot_log, msg_log, inf_log = settings.log_channels.values()
         admin, bypass = settings.extra_roles.values()
         mod, senior = settings.mod_roles.values()
 
@@ -82,7 +82,7 @@ class Settings(commands.Cog):
         embed.add_field(name="Prefixes", value=f"1. {self.bot.user.mention}\n2. {settings.prefix}")
         embed.add_field(
             name="Log Channels",
-            value="\n".join([value('Bot', bot_log, 'channel'), value('Message', msg_log, 'channel')])
+            value="\n".join([value('Bot', bot_log, 'channel'), value('Message', msg_log, 'channel'), value('Infractions', inf_log, 'channel')])
         )
         embed.add_field(
             name="Extra Roles",
@@ -153,14 +153,15 @@ class Settings(commands.Cog):
     async def log_channel(
         self,
         interaction: discord.Interaction,
-        type: Literal['Bot', 'Message'],
+        type: Literal['Bot', 'Message', 'Infractions'],
         channel: discord.TextChannel
     ) -> None:
         settings = await self.bot.get_guild_settings(interaction.guild_id)
 
         document = {
             'bot':settings.log_channels['bot'],
-            'message':settings.log_channels['message']
+            'message':settings.log_channels['message'],
+            'infractions':settings.log_channels['infractions']
         }
 
         document[type.lower()] = channel.id

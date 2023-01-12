@@ -222,7 +222,7 @@ class Bot(commands.Bot):
     async def post_log(
         self,
         guild: discord.Guild,
-        log_type: Literal['bot', 'message'],
+        log_type: Literal['bot', 'message', 'infractions'],
         **kwargs
     ) -> Optional[discord.Message]:
         settings = await self.get_guild_settings(guild.id)
