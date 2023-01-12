@@ -499,6 +499,7 @@ class Moderation(commands.Cog):
                     )
 
                     await self.on_infraction(ctx, message.author, infraction)
+                    return
 
         if settings.domain_detection:
             url_regex = re.compile('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', re.IGNORECASE)
@@ -524,6 +525,7 @@ class Moderation(commands.Cog):
                             )
                     
                         await self.on_infraction(ctx, message.author, infraction)
+                        return
 
             invite_regex = re.compile('(?:https?://)?discord(?:app)?\.(?:com/invite|gg)/[a-zA-Z0-9]+/?', re.IGNORECASE)
 
@@ -551,6 +553,7 @@ class Moderation(commands.Cog):
                     )
 
                     await self.on_infraction(ctx, message.author, infraction)
+                    return
 
 
 async def setup(bot: Bot) -> None:
