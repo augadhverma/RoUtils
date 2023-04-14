@@ -478,7 +478,7 @@ class Tags(commands.GroupCog, name="tag"):
         embed = values['embed']
         view = values['view']
     
-        await ctx.reply(content=content, embed=embed, view=view)
+        await ctx.send(content=content, embed=embed, view=view, reference=ctx.replied_reference, allowed_mentions=discord.AllowedMentions(replied_user=True))
 
 async def setup(bot: Bot):
     await bot.add_cog(Tags(bot))

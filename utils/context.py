@@ -16,6 +16,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+from typing import Any, Optional
 import aiohttp
 import discord
 
@@ -41,3 +42,10 @@ class Context(commands.Context):
     @property
     def footer(self) -> str:
         return self.bot.footer
+    
+    @discord.utils.cached_property
+    def replied_reference(self) -> Optional[discord.MessageReference]:
+        ref = self.message.reference
+        if ref and isinstance(ref.resolved, discord.Message):
+            return ref.resolved.to_reference()
+        return None
