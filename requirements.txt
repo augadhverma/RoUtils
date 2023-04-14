@@ -1,4 +1,4 @@
-discord.py=2.2.2
+discord.py==2.2.2
 git+https://github.com/Rapptz/discord-ext-menus@8686b5d1bbc1d3c862292eb436ab630d6e9c9b53
 jishaku==2.5.1
 motor==3.1.2
