@@ -16,7 +16,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-# version 3
+# version 3.1
 
 import os
 import aiohttp
@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 log_handler = logging.StreamHandler()
 
 if stream_supports_colour(log_handler.stream):
-    log_formatter = discord.client._ColourFormatter()
+    log_formatter = discord.utils._ColourFormatter()
 else:
     dt_fmt = '%Y-%m-%d %H:%M:%S'
     log_formatter = logging.Formatter('[{asctime}] [{levelname:<8}] {name}: {message}', dt_fmt, style='{')
