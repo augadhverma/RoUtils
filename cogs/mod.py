@@ -89,8 +89,15 @@ class Moderation(commands.Cog):
         offender: Union[discord.Member, discord.User],
         infraction: Infraction
     ):
+        settings = await self.bot.get_guild_settings(ctx.guild.id)
+        # suppress warnings in channels like testimonials
         try:
-            await ctx.send(embed=infraction.embed('channel'))
+            if settings.suppress_warns:
+                current = [ctx.channel.id, ctx.channel.category_id]
+                if any(current) in settings.suppress_warns:
+                    pass
+                else:
+                    await ctx.send(embed=infraction.embed('channel'))
         except:
             pass
 
@@ -473,8 +480,15 @@ class Moderation(commands.Cog):
 
         settings = await self.bot.get_guild_settings(message.guild.id)
 
-        if message.channel.category_id in settings.detection_exclusive_channels:
+        channel = message.channel
+        thread_ids = [x.id for x in channel.threads]
+
+        if any([channel.category_id, channel.id]) in settings.detection_exclusive_channels:
             return
+        
+        if any(thread_ids) in settings.detection_exclusive_channels:
+            return
+        
 
         mod_roles = settings.mod_roles.values()
         if (any(x in mod_roles for x in roles)):

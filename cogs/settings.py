@@ -103,6 +103,10 @@ class Settings(commands.Cog):
             name="Detection Disabled in",
             value="\n".join(f"{i}. <#{c}>" for i, c in enumerate(settings.detection_exclusive_channels, 1)) or "Not Set"
         )
+        embed.add_field(
+            name="Suppress Warnings",
+            value="\n".join(f"{i}. <#{c}>" for i, c in enumerate(settings.suppress_warns, 1)) or "Not Set"
+        )
         embed.add_field(name="Mute Role", value=f'<@&{settings.mute_role}>' if settings.mute_role else "Not Set")
         embed.add_field(name="Domain Detection", value=str(settings.domain_detection))
         embed.add_field(name="Bad Word Detection", value=str(settings.bad_word_detection))
@@ -477,6 +481,29 @@ class Settings(commands.Cog):
 
         else:
             await interaction.response.send(f"Word `{word}` could not be removed since it was not registered.")
+
+    @is_admin()
+    @settings_group.command(name="suppress_warns", description="Suppress warnings in the given channel.")
+    async def suppress_warns(self, interaction: discord.Interaction, channel: Union[discord.TextChannel, discord.CategoryChannel]):
+        settings = await self.bot.get_guild_settings(interaction.guild_id)
+        if channel.id in settings.suppress_warns:
+            settings.suppress_warns.remove(channel.id)
+        else:
+            settings.suppress_warns.append(channel.id)
+
+        await self.bot.settings.update_one(
+            {'_id':settings.id}, 
+            {'$set':{'suppressWarns':settings.suppress_warns}}
+        )
+
+        embed = Embed(
+            bot=self.bot,
+            colour=discord.Color.green(),
+            title="Success",
+            description=f"Successfully toggled warning supression in {channel.mention}"
+        )
+
+        await interaction.response.send_message(embed=embed)
 
     embed = app_commands.Group(name="embed", description="To edit and add normal embeds.")
 

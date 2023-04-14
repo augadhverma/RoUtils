@@ -444,6 +444,7 @@ class GuildSettings:
         self.bad_word_detection: bool = document['badWordDetection']
         self.timeout_instead_of_mute: bool = document['timeoutInsteadOfMute']
         self.tickets_channel: int | None = document.get('ticketsChannel')
+        self.suppress_warns: List[int] = document.get('suppressWarns', [])
 
 class CustomEmbeds:
     def __init__(self, document: dict) -> None:
