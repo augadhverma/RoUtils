@@ -287,13 +287,13 @@ class Information(commands.Cog):
 
         settings = await self.bot.get_guild_settings(interaction.guild_id)
         if settings.tickets_channel is None:
-            return await interaction.edit_original_message(content="No ticket category has been set for.", ephemeral=True)
+            return await interaction.edit_original_response(content="No ticket category has been set for.", ephemeral=True)
         channel = interaction.guild.get_channel(settings.tickets_channel)
         if channel is None:
             try:
                 channel = await interaction.guild.fetch_channel(settings.tickets_channel)
             except:
-                return await interaction.edit_original_message(content="Fetching the channel failed!")
+                return await interaction.edit_original_response(content="Fetching the channel failed!")
         url_regex = re.compile('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', re.IGNORECASE)
         async for message in channel.history(limit=None, after=after):
             if message.embeds and message.author.id == 508391840525975553:
@@ -327,7 +327,7 @@ class Information(commands.Cog):
                         if staff.id == member.id:
                             total.append(f'[Ticket #{ticket_id}]({transcript})')
         if len(total) == 0:
-            return await interaction.edit_original_message(content="No tickets to show.")
+            return await interaction.edit_original_response(content="No tickets to show.")
         if member is None:
             claimed = len(total) - len(unclaimed)
             title = f"Claimed: {claimed}/{len(total)} (Unclaimed: {len(unclaimed)})"
