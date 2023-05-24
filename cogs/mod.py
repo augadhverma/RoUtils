@@ -94,7 +94,7 @@ class Moderation(commands.Cog):
         try:
             if settings.suppress_warns:
                 current = [ctx.channel.id, ctx.channel.category_id]
-                if any(current) in settings.suppress_warns:
+                if any(x in current for x in settings.suppress_warns):
                     pass
                 else:
                     await ctx.send(embed=infraction.embed('channel'))
@@ -481,16 +481,16 @@ class Moderation(commands.Cog):
         settings = await self.bot.get_guild_settings(message.guild.id)
 
         channel = message.channel
+        exclusive = settings.detection_exclusive_channels
+        channel_ids = [channel.category_id, channel.id]
+        
         if not isinstance(channel, discord.Thread): # not a Thread
             thread_ids = [x.id for x in channel.threads]
         else:
             thread_ids = [channel.id] # channel is a thread
-
-        exclusive = settings.detection_exclusive_channels
-        channel_ids = [channel.category_id, channel.id]
+            channel_ids.append(channel.parent_id)
 
         if any(x in channel_ids for x in exclusive):
-            print(settings.detection_exclusive_channels)
             return
         
         if any(x in thread_ids for x in exclusive):
