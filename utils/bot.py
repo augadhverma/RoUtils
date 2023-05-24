@@ -16,7 +16,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-# version 3.1
+# version 3.1.1
 
 import os
 import aiohttp
