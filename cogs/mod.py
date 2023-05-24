@@ -481,14 +481,20 @@ class Moderation(commands.Cog):
         settings = await self.bot.get_guild_settings(message.guild.id)
 
         channel = message.channel
-        thread_ids = [x.id for x in channel.threads]
+        if not isinstance(channel, discord.Thread): # not a Thread
+            thread_ids = [x.id for x in channel.threads]
+        else:
+            thread_ids = [channel.id] # channel is a thread
 
-        if any([channel.category_id, channel.id]) in settings.detection_exclusive_channels:
+        exclusive = settings.detection_exclusive_channels
+        channel_ids = [channel.category_id, channel.id]
+
+        if any(x in channel_ids for x in exclusive):
+            print(settings.detection_exclusive_channels)
             return
         
-        if any(thread_ids) in settings.detection_exclusive_channels:
+        if any(x in thread_ids for x in exclusive):
             return
-        
 
         mod_roles = settings.mod_roles.values()
         if (any(x in mod_roles for x in roles)):
