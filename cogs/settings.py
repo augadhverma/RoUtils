@@ -276,7 +276,7 @@ class Settings(commands.Cog):
         self,
         interaction: discord.Interaction,
         option: Literal['Enable', 'Disable'],
-        channel: Optional[Union[discord.TextChannel, discord.CategoryChannel]]
+        channel: Optional[Union[discord.TextChannel, discord.CategoryChannel, discord.ForumChannel]]
     ) -> None:
         settings = await self.bot.get_guild_settings(interaction.guild_id)
 
