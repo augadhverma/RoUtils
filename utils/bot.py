@@ -16,7 +16,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-# version 3.1.1
+__version__ = "3.1.2"
 
 import os
 import aiohttp
@@ -110,6 +110,9 @@ class Bot(commands.Bot):
         }
 
         self.colour = discord.Colour.blue()
+        self.version = __version__
+
+        self.description = "An open-source multi-purpose bot designed mainly for support purposes for the Discord Server RoWifi HQ."
     
     async def on_ready(self) -> None:
         print(f'Ready {self.user} (ID: {self.user.id})')

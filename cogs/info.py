@@ -17,6 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import json
+import platform
 import re
 import discord
 import datetime
@@ -353,6 +354,65 @@ class Information(commands.Cog):
         #     unclaimed_pages = TicketPages(unclaimed, interaction=interaction, bot=self.bot, per_page=15, embed=embed)
         #     await unclaimed_pages.start()
 
+    @is_bot_channel()
+    @app_commands.command(name="serverinfo", description="Gives information about the server.")
+    async def serverinfo(self, interaction: discord.Interaction) -> None:
+        guild = interaction.guild
+        embed = Embed(
+            bot = self.bot,
+            footer = f"ID: {guild.id}",
+            title = guild.name,
+        )
+
+        if interaction.guild.description:
+            embed.description = guild.description
+
+        embed.set_thumbnail(url=guild.icon.url)
+
+        if guild.banner:
+            embed.set_image(url=guild.banner.url)
+        
+        embed.add_field(name="Owner", value=guild.owner.mention)
+        embed.add_field(name="Created At", value=discord.utils.format_dt(guild.created_at))
+        embed.add_field(name="Members", value=len(guild.members))
+
+        settings = await self.bot.get_guild_settings(guild.id)
+
+        embed.add_field(name="Domain Detection", value=str(settings.domain_detection))
+        embed.add_field(name="Bad Word Detection", value=str(settings.bad_word_detection))
+        embed.add_field(name="Timeout Enabled", value=str(settings.timeout_instead_of_mute))
+
+        await interaction.response.send_message(embed=embed)
+
+    @is_bot_channel()
+    @app_commands.command(name="botinfo", description="Gives information about me!")
+    async def botinfo(self, interaction: discord.Interaction) -> None:
+        
+        embed = Embed(
+            bot=self.bot,
+            title=str(self.bot.user),
+            description=self.bot.description
+        )
+
+        owner = self.bot.get_user(self.bot.owner_id).mention
+
+        embed.add_field(name="Language", value="Python " + platform.python_version())
+        embed.add_field(name="Library", value="discord.py "+ discord.__version__)
+        embed.add_field(name="Bot Version", value=self.bot.version)
+        embed.add_field(name="Developer", value=owner or "<@!449897807936225290>")
+        
+        embed.set_thumbnail(url=self.bot.user.avatar.url)
+        
+        button = discord.ui.Button(
+            style=discord.ButtonStyle.url,
+            label="GitHub Repository",
+            url="https://github.com/augadhverma/RoUtils"
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            view=discord.ui.View(timeout=None).add_item(button)
+        )
 
 async def setup(bot: Bot):
     await bot.add_cog(Information(bot))
